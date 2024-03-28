@@ -47,3 +47,11 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Large files
+pred_grid_df.csv
+Mean depth natural colour (with land).nc
+cmems_mod_bal_phy_my_P1M-m_1711622828562.nc
+cmems_mod_nws_phy-t_my_7km-3D_P1M-m_1711622425797.nc
+
+
