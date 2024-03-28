@@ -1,0 +1,263 @@
+---
+title: "Make the prediction grid"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+
+## Intro
+Make an evenly spaced UTM prediction grid with all spatially varying covariates for the diet and the biomass data
+
+```{r lib}
+#| message: false
+
+library(tidyverse)
+library(tidylog)
+library(tidync)
+library(tidyterra)
+library(sp)
+library(devtools)
+library(RCurl)
+library(sdmTMB)
+library(ncdf4)
+library(terra)
+library(viridis)
+# devtools::install_github("seananderson/ggsidekick") # not on CRAN 
+library(ggsidekick)
+theme_set(theme_sleek())
+
+home <- here::here()
+# source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+source(paste0(home, "/R/functions/map-plot.R"))
+```
+
+Read data and depth-raster
+
+```{r data}
+# Read data
+d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv"))
+```
+
+## Make the grid
+First make a grid for the area, then subset that based on the extend of the size data
+
+```{r make pred grid}
+x <- d$X
+y <- d$Y
+z <- chull(x, y)
+
+coords <- cbind(x[z], y[z])
+
+coords <- rbind(coords, coords[1, ])
+
+plot(coords[, 1] ~ coords[, 2]) # plot data
+
+sp_poly <- sp::SpatialPolygons(
+  list(sp::Polygons(list(sp::Polygon(coords)), ID = 1))
+  )
+
+sp_poly_df <- sp::SpatialPolygonsDataFrame(sp_poly,
+                                           data = data.frame(ID = 1)
+                                           )
+cell_width <- 3
+
+pred_grid <- expand.grid(
+  X = seq(min(d$X), max(d$X), cell_width),
+  Y = seq(min(d$Y), max(d$Y), cell_width),
+  year = c(1993:2021)
+  )
+
+ggplot(pred_grid %>% filter(year == 2019), aes(X, Y)) +
+  geom_point(size = 0.1) +
+  theme_void() +
+  coord_sf()
+
+sp::coordinates(pred_grid) <- c("X", "Y")
+
+inside <- !is.na(sp::over(pred_grid, as(sp_poly_df, "SpatialPolygons")))
+
+pred_grid <- pred_grid[inside, ]
+
+pred_grid <- as.data.frame(pred_grid)
+
+plot_map +
+  geom_point(data = filter(pred_grid, year == 1999), aes(X*1000, Y*1000), size = 0.001, alpha = 0.5) +
+  NULL
+
+# Add lat and lon
+# Need to go from UTM to lat long for this one...
+# https://stackoverflow.com/questions/30018098/how-to-convert-utm-coordinates-to-lat-and-long-in-r
+xy <- as.matrix(pred_grid %>% dplyr::select(X, Y) %>% mutate(X = X*1000, Y = Y*1000))
+v <- vect(xy, crs="+proj=utm +zone=32 +datum=WGS84  +units=m")
+y <- project(v, "+proj=longlat +datum=WGS84")
+lonlat <- geom(y)[, c("x", "y")]
+
+pred_grid$lon <- lonlat[, 1]
+pred_grid$lat <- lonlat[, 2]
+```
+
+### Depth and crop
+
+```{r}
+# Add depth now to remove islands and remaining land
+# https://gis.stackexchange.com/questions/411261/read-multiple-layers-raster-from-ncdf-file-using-terra-package
+# https://emodnet.ec.europa.eu/geoviewer/
+dep_raster <- terra::rast(paste0(home, "/data/Mean depth natural colour (with land).nc"))
+class(dep_raster)
+crs(dep_raster, proj = TRUE)
+
+plot(dep_raster)
+
+pred_grid$depth <- terra::extract(dep_raster, pred_grid %>% dplyr::select(lon, lat))$elevation
+
+pred_grid$depth <- pred_grid$depth*-1
+
+# pred_grid <- pred_grid %>% drop_na(depth)
+
+# FIXME
+# Hack to get rid of Denmark and other land with incomplete bathy
+# ggplot(pred_grid, aes(X*1000, Y*1000, fill = depth)) + 
+#   geom_raster()
+# 
+pred_grid <- pred_grid %>%
+  mutate(depth = ifelse(is.na(depth) & lon < 8.8, 0, depth)) %>% 
+  drop_na(depth)
+
+# ggplot(pred_grid2, aes(X*1000, Y*1000, fill = depth)) + 
+#   geom_raster()
+
+# FIXME: tidy up this prediction grid by removing the super coastal samples
+plot_map + 
+  geom_raster(data = pred_grid, aes(X*1000, Y*1000, fill = depth), size = 0.001) + 
+  #facet_wrap(~year) + 
+  geom_sf()
+```
+
+### Temperature
+
+```{r temperature}
+# Uhhhh this is annoying. The extent of either the NS or BS do not cover the whole data. For now, I'm using both and splitting the data... 
+
+print(nc_open(paste0(home, "/data/copernicus/cmems_mod_nws_phy-t_my_7km-3D_P1M-m_1711622425797.nc")))
+
+temp_tibble_ns <- tidync(paste0(home, "/data/copernicus/cmems_mod_nws_phy-t_my_7km-3D_P1M-m_1711622425797.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>% 
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  # Filter January
+  filter(month == 1) %>% 
+  rename(sst = thetao) %>% 
+  add_utm_columns()
+
+# plot_map + 
+#   geom_point(data = temp_tibble, aes(X*1000, Y*1000))
+
+# Now do the baltic
+print(nc_open(paste0(home, "/data/copernicus/cmems_mod_bal_phy_my_P1M-m_1711622828562.nc")))
+
+# https://data.marine.copernicus.eu/product/BALTICSEA_MULTIYEAR_PHY_003_011/download?dataset=cmems_mod_bal_phy_my_P1M-m_202303
+temp_tibble_bs <- tidync(paste0(home, "/data/copernicus/cmems_mod_bal_phy_my_P1M-m_1711622828562.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>% 
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  # Filter January
+  filter(month == 1) %>% 
+  rename(sst = thetao) %>% 
+  add_utm_columns()
+
+# plot_map + 
+#   geom_point(data = temp_tibble_bs, aes(X*1000, Y*1000))
+
+# Combine temperature tibbles
+
+temp_tibble <- bind_rows(temp_tibble_ns %>%
+                           filter(longitude <= min(temp_tibble_bs$longitude)), 
+                         temp_tibble_bs)
+
+# Loop through all month-year combos, extract the temperatures at the data locations
+
+# Loop, make raster and extract
+temp_list <- list()
+
+# Trim years we have temperature for (again, annoying! Fix the temperatures later)
+
+for(i in unique(pred_grid$year)) {
+  
+  d_sub <- filter(pred_grid, year == i)
+  temp_tibble_sub_bs <- filter(temp_tibble_bs, year == i)
+  temp_tibble_sub_ns <- filter(temp_tibble_ns, year == i)
+  
+  # Convert to raster
+  temp_raster_bs <- as_spatraster(temp_tibble_sub_bs, xycols = 2:3,
+                                  crs = "WGS84", digits = 3)
+
+  temp_raster_ns <- as_spatraster(temp_tibble_sub_ns, xycols = 2:3,
+                                  crs = "WGS84", digits = 3)
+    
+  # p1 <- ggplot() + 
+  #   geom_spatraster(data = temp_raster_bs$sst, aes(fill = sst))
+  # 
+  # p2 <- ggplot() + 
+  #   geom_spatraster(data = temp_raster_ns$sst, aes(fill = sst))
+  # 
+  # p1 + p2
+  
+  # Extract from raster
+  d_bs <- d_sub %>% 
+    filter(lon >= min(temp_tibble_sub_bs$longitude))
+  
+  d_ns <- d_sub %>% 
+    filter(lon < min(temp_tibble_sub_bs$longitude))
+  
+  d_bs$temp <- terra::extract(temp_raster_bs$sst,
+                              d_bs %>% dplyr::select(lon, lat))$sst  
+    
+  d_ns$temp <- terra::extract(temp_raster_ns$sst,
+                              d_ns %>% dplyr::select(lon, lat))$sst  
+    
+  d_comb <- bind_rows(d_ns, d_bs)
+  
+  # Save
+  temp_list[[i]] <- d_comb
+  
+}
+
+pred_grid <- bind_rows(temp_list)
+```
+
+#### Plot temperature
+
+```{r}
+plot_map_fc + 
+  geom_raster(data = pred_grid, aes(X*1000, Y*1000, fill = temp)) + 
+  facet_wrap(~year, ncol = 8) +
+  scale_fill_viridis(option = "magma")
+
+# Mean temperature in the domain over time
+pred_grid %>% 
+  drop_na(temp) %>% 
+  summarise(temp = mean(temp), .by = "year") %>% 
+  ggplot(aes(year, temp)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+```
+
+## Save
+
+```{r save}
+write_csv(pred_grid, file = paste0(home, "/data/clean/pred_grid.csv"))
+```

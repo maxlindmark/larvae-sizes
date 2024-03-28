@@ -1,0 +1,381 @@
+---
+title: "Collate larval size data"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries
+library(tidyverse)
+library(tidyterra)
+library(tidylog)
+library(tidync)
+library(ggridges)
+library(readxl)
+library(janitor)
+library(lubridate)
+library(sdmTMB)
+library(ncdf4)
+library(patchwork)
+library(terra)
+library(viridis)
+library(devtools)
+library(ggsidekick); theme_set(theme_sleek())
+
+home <- here::here()
+# source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
+source(paste0(home, "/R/functions/map-plot.R"))
+```
+
+# Explore data
+## Read and clean data
+### Old data
+
+```{r merge stomach}
+#| message: false
+#| warning: false
+
+# 1992 -2008
+length_old <- read_excel(paste0(home, "/data/larvea/1992_2010 MIK SWE Alla arter.xlsx"),
+                       sheet = 1,
+                       skip = 20)
+
+# Clean data!
+length_old <- length_old %>% 
+  # some columns are on row 19, most are on 20, so lets fix this manually
+  # we take lat from trawl data
+  # rename(lat = `lat degree...10`, 
+  #        lon = `long degree...16`) %>% 
+  # clean names so that I can pivot wider
+  clean_names() %>% 
+  pivot_longer(cols = x3:x130, names_to = "length_mm", values_to = "n") %>% 
+  dplyr::select(year, day, month, haul, species, n, length_mm) %>% 
+  # make it numeric
+  mutate(length_mm = as.numeric(str_remove(length_mm, "x"))) %>% 
+  # NA n means there was no recorded larvae in that size group (note there are also 0s in the data)
+  drop_na(n) %>%
+  filter(n > 0) %>% 
+  # expand the data so that 1 row is 1 individual
+  # FIXME: the counts are not integers?! (hence the need for round)
+  uncount(round(n)) %>% 
+  dplyr::select(-n) %>% 
+  # make a unique haul ID so that we can match with trawl data
+  mutate(haul_id = paste(year, month, day, haul, sep = "_"))
+
+# Read trawl data and match in coordinates
+trawl_old <- read_excel(paste0(home, "/data/larvea/1992-2010 MIK SWE Tråldata.xlsx"),
+                        sheet = 1,
+                        skip = 8) %>% 
+  clean_names() %>% 
+  # the last two coordinate columns are decimal degrees of haul position
+  rename(haul = haul_no,
+         lat = lat_decim_20,
+         lon = long_decim_21) %>% 
+  # two rows without info, including year, so I'm dropping these
+  drop_na(year) %>% 
+  mutate(haul_id = paste(year, month, day, haul, sep = "_")) %>% 
+  distinct(haul_id, .keep_all = TRUE) %>% 
+  dplyr::select(haul_id, lat, lon, temp)
+  
+# Join trawl data to length data
+length_old <- length_old %>%
+  left_join(trawl_old, by = "haul_id") %>%
+  dplyr::select(-haul) %>% 
+  mutate(period = "old",
+         day = as.numeric(day),
+         month = as.numeric(month))
+```
+
+### New data
+
+```{r}
+#| message: false
+#| warning: false
+# 1992 -2008
+length_new <- read_excel(paste0(home, "/data/larvea/ELDB(s) bara fisk 2008-2024.xlsx")) %>% 
+  clean_names() %>% 
+  rename(length_mm = length) %>% 
+  dplyr::select(haul_id, species, length_mm) %>% 
+  drop_na(length_mm)
+
+trawl_new <- read_excel(paste0(home, "/data/larvea/ELDB 2008-2024.xlsx")) %>% 
+  clean_names() %>% 
+  rename(lat = start_latitud,
+         lon = start_longitud) %>% 
+  dplyr::select(year, day, month, haul_id, lat, lon, sur_temp) %>% 
+  rename(temp = sur_temp)
+
+length_new <- length_new %>% 
+  left_join(trawl_new, by = "haul_id") %>%
+  mutate(period = "old",
+         year = as.numeric(year),
+         day = as.numeric(day),
+         month = as.numeric(month))
+```
+
+### Join old and new
+
+```{r}
+#| message: false
+#| warning: false
+d <- bind_rows(length_new, length_old) %>% 
+  mutate(yday = yday(paste(year, month, day, sep = "-"))) %>% 
+  filter(lon > 8) %>% 
+  drop_na(lat) %>% 
+  rename(temp_obs = temp)
+
+# Add km UTM coords
+d <- d %>%
+  add_utm_columns(ll_names = c("lon", "lat"))
+```
+
+## Explore data
+
+```{r}
+#| message: false
+#| warning: false
+# Sample size
+plot_map_fc + 
+  geom_point(data = d %>% 
+               group_by(haul_id, Y, X, year) %>% 
+               summarise(n = n()),
+             aes(X*1000, Y*1000, color = n),
+             size = 0.5) + 
+  facet_wrap(~year, ncol = 8) + 
+  scale_color_viridis(trans = "sqrt") + 
+  ggtitle("Sample size per haul")
+
+# Day of the year
+plot_map_fc + 
+  geom_point(data = d %>% 
+               distinct(haul_id, .keep_all = TRUE),
+             aes(X*1000, Y*1000, color = yday),
+             size = 0.5) + 
+  facet_wrap(~year, ncol = 8) + 
+  scale_color_viridis(trans = "sqrt") + 
+  ggtitle("Day of the year of sampling in space")
+
+# Which dates are sampled?
+d %>% 
+  ggplot(aes(as.factor(month))) + 
+  scale_fill_viridis(discrete = TRUE) +
+  geom_histogram(stat= "count")
+
+d %>% 
+  ggplot(aes(x = yday, y = as.factor(year), fill = after_stat(x))) + 
+  scale_fill_viridis(alpha = 0.8, name = "") +
+  geom_density_ridges_gradient(alpha = 0.75) + 
+  theme_facet_map() + 
+  labs(y = "year")
+
+# Species
+sort(unique(d$species))
+
+# Clean species names!
+d <- d %>% 
+  mutate(species = str_to_sentence(species))
+
+sort(unique(d$species))
+
+# FIXME: check Physidae, Phycidae
+d <- d %>% 
+  filter(!species %in% c("Unidentified", "Sprattus sprattus adult", "Clupea harengus adult"))
+
+d %>% 
+  group_by(year, species) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(year, n, fill = species)) + 
+  guides(fill = "none") + 
+  facet_wrap(~species, scales = "free_y") + 
+  geom_bar(stat = "identity")
+
+# Filter species with at least 10 years of data
+d <- d %>% 
+  group_by(species, year) %>% 
+  # At least 3 samples by year
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  filter(n >= 3) %>% 
+  group_by(species) %>% 
+  mutate(n_years = length(unique(year))) %>% 
+  ungroup() %>% 
+  filter(n_years >= 10) %>% 
+  dplyr::select(-n_years, -n)
+
+d %>% 
+  group_by(year, species) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(year, n, fill = species)) + 
+  guides(fill = "none") + 
+  facet_wrap(~species, scales = "free_y", ncol = 5) + 
+  geom_bar(stat = "identity") + 
+  scale_fill_viridis(discrete = TRUE)
+
+# Plot species samples in space, color by year
+plot_map_fc + 
+  geom_point(data = d,
+             aes(X*1000, Y*1000, color = year),
+             size = 0.5) + 
+  facet_wrap(~species, ncol = 6) + 
+  scale_color_viridis() + 
+  ggtitle("Samples in space by species and year")
+
+# Fixme: Crystallugobius not a larvate, right?
+```
+
+## Add temperature covariate to hauls
+
+```{r}
+#| message: false
+#| warning: false
+# https://data.marine.copernicus.eu/product/NWSHELF_MULTIYEAR_PHY_004_009/download?dataset=cmems_mod_nws_phy-t_my_7km-3D_P1M-m_202012
+
+# Uhhhh this is annoying. The extent of either the NS or BS do not cover the whole data. For now, I'm using both and splitting the data... 
+
+print(nc_open(paste0(home, "/data/copernicus/cmems_mod_nws_phy-t_my_7km-3D_P1M-m_1711622425797.nc")))
+
+temp_tibble_ns <- tidync(paste0(home, "/data/copernicus/cmems_mod_nws_phy-t_my_7km-3D_P1M-m_1711622425797.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>% 
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  # Filter January
+  filter(month == 1) %>% 
+  rename(sst = thetao) %>% 
+  add_utm_columns()
+
+# plot_map + 
+#   geom_point(data = temp_tibble, aes(X*1000, Y*1000))
+
+# Now do the baltic
+print(nc_open(paste0(home, "/data/copernicus/cmems_mod_bal_phy_my_P1M-m_1711622828562.nc")))
+
+# https://data.marine.copernicus.eu/product/BALTICSEA_MULTIYEAR_PHY_003_011/download?dataset=cmems_mod_bal_phy_my_P1M-m_202303
+temp_tibble_bs <- tidync(paste0(home, "/data/copernicus/cmems_mod_bal_phy_my_P1M-m_1711622828562.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>% 
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  # Filter January
+  filter(month == 1) %>% 
+  rename(sst = thetao) %>% 
+  add_utm_columns()
+
+# plot_map + 
+#   geom_point(data = temp_tibble_bs, aes(X*1000, Y*1000))
+
+# Combine temperature tibbles
+
+temp_tibble <- bind_rows(temp_tibble_ns %>%
+                           filter(longitude <= min(temp_tibble_bs$longitude)), 
+                         temp_tibble_bs)
+
+# Loop through all month-year combos, extract the temperatures at the data locations
+
+# Loop, make raster and extract
+temp_list <- list()
+
+# Trim years we have temperature for (again, annoying! Fix the temperatures later)
+d <- d %>% 
+  filter(year >= 1993 & year <= 2021)
+
+for(i in unique(d$year)) {
+  
+  d_sub <- filter(d, year == i)
+  temp_tibble_sub_bs <- filter(temp_tibble_bs, year == i)
+  temp_tibble_sub_ns <- filter(temp_tibble_ns, year == i)
+  
+  # Convert to raster
+  temp_raster_bs <- as_spatraster(temp_tibble_sub_bs, xycols = 2:3,
+                                  crs = "WGS84", digits = 3)
+
+  temp_raster_ns <- as_spatraster(temp_tibble_sub_ns, xycols = 2:3,
+                                  crs = "WGS84", digits = 3)
+    
+  # p1 <- ggplot() + 
+  #   geom_spatraster(data = temp_raster_bs$sst, aes(fill = sst))
+  # 
+  # p2 <- ggplot() + 
+  #   geom_spatraster(data = temp_raster_ns$sst, aes(fill = sst))
+  # 
+  # p1 + p2
+  
+  # Extract from raster
+  d_bs <- d_sub %>% 
+    filter(lon >= min(temp_tibble_sub_bs$longitude))
+  
+  d_ns <- d_sub %>% 
+    filter(lon < min(temp_tibble_sub_bs$longitude))
+  
+  d_bs$temp <- terra::extract(temp_raster_bs$sst,
+                              d_bs %>% dplyr::select(lon, lat))$sst  
+    
+  d_ns$temp <- terra::extract(temp_raster_ns$sst,
+                              d_ns %>% dplyr::select(lon, lat))$sst  
+    
+  d_comb <- bind_rows(d_ns, d_bs)
+  
+  # Save
+  temp_list[[i]] <- d_comb
+  
+}
+
+d <- bind_rows(temp_list)
+```
+
+Plot response variables
+
+```{r}
+#| message: false
+#| warning: false
+d %>% 
+  summarise(n = n(), .by = species) %>% 
+  arrange(desc(n))
+
+# Distribution of data
+ggplot(d, aes(length_mm)) + 
+  geom_histogram() + 
+  facet_wrap(~species, scales = "free")
+
+# Effect of day of the year
+ggplot(d, aes(yday, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  facet_wrap(~species, scales = "free")
+
+# Effect of year
+ggplot(d, aes(year, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  facet_wrap(~species, scales = "free")
+
+# Effect of temperature
+ggplot(d, aes(temp, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  #geom_smooth() +
+  facet_wrap(~species, scales = "free")
+```
+
+## Save data
+
+```{r}
+write_csv(d, paste0(home, "/data/clean/larval_size.csv"))
+```
+
