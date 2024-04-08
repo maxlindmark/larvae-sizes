@@ -26,172 +26,339 @@ library(sdmTMB)
 library(patchwork)
 library(viridis)
 library(RColorBrewer)
+library(modelr)
+library(ggstats)
 library(ggsidekick); theme_set(theme_sleek())
 
 home <- here::here()
-# source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
 source(paste0(home, "/R/functions/map-plot.R"))
 ```
 
 Read data and prediction grid, scales variables
 
 ```{r data}
+#| message: false
 # Read data
 d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv")) %>% 
   drop_na(temp) %>% 
   mutate(temp_sc = (temp - mean(temp, na.rm = TRUE)) / sd(temp, na.rm = TRUE),
          yday_ct = yday - mean(yday),
-         year_f = as.factor(year))
+         year_f = as.factor(year),
+         species_f = as.factor(species),
+         year_ct = year - median(year))
 
-nrow(d)
+# Trim some outliers
+d %>% 
+  group_by(species) %>% 
+  mutate(sd = sd(length_mm),
+         mean = mean(length_mm)) %>% 
+  ungroup() %>% 
+  mutate(outlier = ifelse(length_mm > mean - 4*sd & length_mm < mean + 4*sd,
+                          "No", "Yes")) %>% 
+  ggplot(aes(year, length_mm, color = outlier)) + 
+  facet_wrap(~species, scales = "free") + 
+  geom_point()
 
+d %>% 
+  group_by(species) %>% 
+  mutate(sd = sd(length_mm),
+         mean = mean(length_mm)) %>% 
+  ungroup() %>% 
+  mutate(outlier = ifelse(length_mm > mean - 4*sd & length_mm < mean + 4*sd,
+                          "No", "Yes")) %>% 
+  ggplot(aes(length_mm, fill = outlier)) + 
+  facet_wrap(~species, scales = "free") + 
+  geom_bar()
+
+sort(unique(d$species))
+
+d <- d %>%
+  group_by(species) %>% 
+  mutate(sd = sd(length_mm),
+         mean = mean(length_mm)) %>% 
+  ungroup() %>% 
+  mutate(
+    outlier = ifelse(length_mm > mean - 4*sd & length_mm < mean + 4*sd,
+                     "No", "Yes"),
+    outlier = ifelse(species == "Limanda limanda" & length_mm > 50, "Yes", outlier)) %>%
+  filter(outlier == "No")
+
+ggplot(d, aes(length_mm, fill = outlier)) + 
+  facet_wrap(~species, scales = "free") + 
+  geom_bar()
+
+d %>% 
+  group_by(year, species) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(year, n)) + 
+  facet_wrap(~species, scales = "free_y", ncol = 3) + 
+  geom_bar(stat = "identity")
+
+coul <- brewer.pal(11, "Spectral") 
+coul <- colorRampPalette(coul)(length(unique(d$species)))
+
+p1 <- ggplot(d, aes(log(length_mm), fill = species)) + 
+  geom_histogram() + 
+  scale_fill_manual(values = coul, name = "Species") + 
+  coord_cartesian(expand = 0) + 
+  labs(y = "Count", x = "log(Length (mm))", tag = "b)") + 
+  theme(legend.text = element_text(face = "italic", size = 7),
+        legend.key.size = unit(0.25, "cm"),
+        legend.position.inside = c(0.2, 0.69),
+        plot.tag = element_text()) +
+  guides(fill = guide_legend(position = "inside"))
+
+# Load prediction grid
 pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) %>% 
   drop_na(temp) %>% 
+  filter(year %in% unique(d$year)) %>% 
   mutate(temp_sc = (temp - mean(d$temp, na.rm = TRUE)) / sd(d$temp, na.rm = TRUE),
          year_f = as.factor(year),
-         yday_ct = 0)
-```
+         year_ct = 0,
+         yday_ct = 0) %>% 
+  mutate(keep = ifelse(lon < 10 & lat < 57.15, "N", "Y")) %>% 
+  filter(keep == "Y") %>% dplyr::select(-keep)
 
-### Fit example model
-
-```{r}
-pred_grid_list <- list()
-coef_list <- list()
-res_list <- list()
-cond_list <- list()
-
-for(i in unique(d$species)) {  
-    
-    dd <- d %>% filter(species == i)
-    
-    mesh <- make_mesh(dd,
-                      xy_cols = c("X", "Y"),
-                      cutoff = 5)
-    
-    print(
-    ggplot() +
-      inlabru::gg(mesh$mesh) +
-      coord_fixed() +
-      geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
-      annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) + 
-      labs(x = "Easting (km)", y = "Northing (km)", title = str_to_sentence(str_replace(i, "_", " ")))
-    )
- 
-    # TODO: Time-varying intercept (rw or ar1) to fill in gaps with ar1?
-    # TODO: Anisotrophy might be warranted here
-    # TODO: Spatiotemporal?
-    # TODO: Spatially varying NAO?
-    # TODO: R2 for temperature (write a functions)
-    
-    if(unique(!dd$species %in% c("Maurolicus muelleri",
-                                 "Anguilla anguilla",
-                                 "Agonus cataphractus",
-                                 "Syngnathus rostellatus",
-                                 "Enchelyopus cimbrius"))) {
-      
-    m <- sdmTMB(length_mm ~ 0 + year_f + temp_sc + yday_ct,
-                data = dd,
-                mesh = mesh,
-                family = student(df = 8),
-                spatiotemporal = "off",
-                spatial = "on",
-                time = "year")  
-    
-    # Residuals
-    samps <- sdmTMBextra::predict_mle_mcmc(m, mcmc_iter = 201, mcmc_warmup = 200)
-    dd$mcmc_res <- as.vector(residuals(m, type = "mle-mcmc", mcmc_samples = samps))
-      
-    } else {
-      
-    m <- sdmTMB(length_mm ~ 0 + year_f + temp_sc + yday_ct,
-                data = dd,
-                family = student(df = 8),
-                spatiotemporal = "off",
-                spatial = "off",
-                time = "year")  
-      
-    # Residuals
-    # FIXME: why doesn't MCMC residuals work without spatial models?
-    dd$mcmc_res <- residuals(m)
-    
-    }
-    
-    print(i)
-    m
-    sanity(m)
-    
+# Plot temperature in space
+p2 <- plot_map + 
+  geom_raster(data = pred_grid %>% 
+                group_by(X, Y) %>% 
+                summarise(mean_temp = mean(temp)),
+              aes(X*1000, Y*1000, fill = mean_temp)) + 
+  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
+             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") +
+  scale_fill_viridis(option = "magma", name = "Temperature (°C)") + 
+  theme(legend.position.inside = c(0.25, 0.1),
+        legend.direction = "horizontal",
+        legend.key.width = unit(0.5, "cm"),
+        legend.key.height = unit(0.2, "cm"),
+        legend.text = element_text(size = 6),
+        legend.title = element_text(size = 8),
+        plot.tag = element_text()) +
+  labs(tag = "a)") +
+  guides(fill = guide_colorbar(position = "inside",
+                               title.position = "top",
+                               title.hjust = 0.5)) + 
+  geom_sf() +
+  annotate("text", label = "Sweden", x = xmin2 + 0.95*xrange, y = ymin2 + 0.75*yrange,
+           color = "gray50", size = 3) + 
+  annotate("text", label = "Norway", x = xmin2 + 0.08*xrange, y = ymin2 + 0.95*yrange,
+           color = "gray50", size = 3) +
+  annotate("text", label = "Denmark", x = xmin2 + 0.42*xrange, y = ymin2 + 0.45*yrange,
+           color = "gray50", size = 3)
   
-    res_list[[i]] <- dd %>% mutate(species = i)
-    
-    # Gridded predictions
-    pred <- predict(m, newdata = pred_grid %>% filter(year %in% unique(dd$year)))
-    
-    pred_grid_list[[i]] <- pred %>% mutate(species = i)
+p2 + p1
 
-    # Coefficients
-    coef_list[[i]] <- tidy(m, conf.int = TRUE) %>%
-      filter(term %in% c("temp_sc", "yday_ct")) %>% 
-      mutate(species = i)
-    
-    # Conditional predictions
-    nd <- tibble(year = unique(dd$year)) %>% 
-      mutate(year_f = as.factor(year), 
-             yday_ct = 0, 
-             temp_sc = 0)
-    
-    pred_c <- predict(m, newdata = nd, se_fit = TRUE,
-                      re_form = NA, re_form_iid = NA)
+ggsave(paste0(home, "/figures/data_map.pdf"), width = 22, height = 12, units = "cm")
 
-    cond_list[[i]] <- pred_c %>% mutate(species = i)
-    
-}
-
-# Save predictions and sims as data frames
-res_df <- dplyr::bind_rows(res_list)
-pred_grid_df <- dplyr::bind_rows(pred_grid_list)
-coef_df <- dplyr::bind_rows(coef_list)
-cond_df <- dplyr::bind_rows(cond_list)
+# To load entire cache in interactive r session, do: 
+# qwraps2::lazyload_cache_dir(path = "R/analysis/00-fit-models_cache/html")
 ```
 
-## Save
+### Fit alternative models
+
+```{r fit models}
+#| message: false
+mesh <- make_mesh(d,
+                  xy_cols = c("X", "Y"),
+                  cutoff = 5)
+    
+ggplot() +
+  inlabru::gg(mesh$mesh) +
+  coord_fixed() +
+  geom_point(aes(X, Y), data = d, alpha = 0.2, size = 0.5) +
+  annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) + 
+  labs(x = "Easting (km)", y = "Northing (km)")
+
+# Basic model
+m0 <- sdmTMB(
+  length_mm ~ temp_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "off",
+  spatial = "on",
+  time = "year")
+
+sanity(m0)
+m0
+
+# IID ST fields
+m1 <- sdmTMB(
+  length_mm ~ temp_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year")
+
+sanity(m1)
+m1
+```
+
+### Cross validation
+
+```{r}
+#| message: false
+set.seed(99)
+
+clust <- kmeans(d[, c("X", "Y")], 5)$cluster
+
+d$clust <- clust
+
+pal <- coul[c(1, 6, 8, 16, 20)]
+
+plot_map +
+  geom_point(data = d, aes(X*1000, Y*1000, color = as.factor(clust)),
+             alpha = 0.3, size = 0.6, shape = 21, fill = NA) +
+  scale_color_manual(values = pal)
+  
+ggsave(paste0(home, "/figures/cv_cluster.pdf"), width = 11, height = 11, units = "cm")
+
+m0_cv <- sdmTMB_cv(
+  length_mm ~ temp_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "off",
+  spatial = "on",
+  fold_ids = clust,
+  k_folds = length(unique(clust))
+)
+
+m1_cv <- sdmTMB_cv(
+  length_mm ~ temp_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year",
+  fold_ids = clust,
+  k_folds = length(unique(clust))
+)
+
+# Compare log-likelihoods -- higher is better!
+m0_cv$sum_loglik
+m1_cv$sum_loglik
+```
+
+Go with model 1, spatiotemporal IID
+
+### Plot residuals 
+
+```{r}
+# samps <- sdmTMBextra::predict_mle_mcmc(m1, mcmc_iter = 201, mcmc_warmup = 200)
+# d$mcmc_res1 <- as.vector(residuals(m1, type = "mle-mcmc", mcmc_samples = samps))
+# #d$mcmc_res1 <- residuals(m1)
+# 
+# # Looks reasonably, a weird at the tails though
+# d %>%
+#   ggplot(aes(sample = mcmc_res1)) +
+#   stat_qq(size = 0.75, shape = 21, fill = NA) +
+#   stat_qq_line() +
+#   labs(y = "Sample Quantiles", x = "Theoretical Quantiles") +
+#   theme(aspect.ratio = 1)
+# 
+# ggsave(paste0(home, "/figures/qq.pdf"), width = 11, height = 11, units = "cm")
+# 
+# # Plot in space
+# plot_map +
+#   geom_point(data = d, aes(X*1000, Y*1000, color = mcmc_res1)) +
+#   scale_color_gradient2()
+
+# Residuals -- above doesn't work yet with gengamma!
+png(file = paste0(home, "/figures/qq.png"), units = "cm", width = 15, height = 15, res = 300)
+simulate(m1, nsim = 300, type = 'mle-mvn') %>%
+  dharma_residuals(m1)
+dev.off()
+```
+
+### Predict on grid and plot spatial
 
 ```{r}
 #| message: false
 #| warning: false
 
-write_csv(res_df, paste0(home, "/output/res_df.csv"))
-write_csv(pred_grid_df, paste0(home, "/output/pred_grid_df.csv"))
-write_csv(coef_df, paste0(home, "/output/coef_df.csv"))
-write_csv(cond_df, paste0(home, "/output/cond_df.csv"))
-```
+pred <- predict(m1, newdata = pred_grid %>%
+                  mutate(species = "Clupea harengus")) # The ST and S random fields do not change with species
 
-## Plot output
+# Spatial random
+plot_map +
+  geom_raster(data = pred %>% filter(year == max(year)),
+              aes(X*1000, Y*1000, fill = omega_s)) +
+  scale_fill_gradient2(name = "Spatial random effect") +
+  theme_sleek(base_size = 9) +
+  theme(legend.position.inside = c(0.25, 0.1),
+        legend.direction = "horizontal",
+        legend.key.width = unit(0.7, "cm"),
+        legend.key.height = unit(0.3, "cm")) +
+  guides(fill = guide_colorbar(position = "inside",
+                               title.position = "top",
+                               title.hjust = 0.5)) + 
+  geom_sf()
 
-```{r}
-#| message: false
-#| warning: false
+ggsave(paste0(home, "/figures/omega.pdf"), width = 11, height = 11, units = "cm")
 
-res_df <- read_csv(paste0(home, "/output/res_df.csv"))
-pred_grid_df <- read_csv(paste0(home, "/output/pred_grid_df.csv"))
-coef_df <- read_csv(paste0(home, "/output/coef_df.csv"))
-cond_df <- read_csv(paste0(home, "/output/cond_df.csv"))
-```
+# Spatiotemporal random
+plot_map_fc +
+  geom_raster(data = pred,
+              aes(X*1000, Y*1000, fill = epsilon_st)) +
+  scale_fill_gradient2(name = "Spatiotemporal random effects") + 
+  facet_wrap(~year, ncol = 7) + 
+  theme_facet_map(base_size = 10) + 
+  geom_sf()
 
-### Residuals
+ggsave(paste0(home, "/figures/epsilon.pdf"), width = 17, height = 15, units = "cm")
 
-```{r}
-#| message: false
-#| warning: false
 
-res_df %>% 
-  ggplot(aes(sample = mcmc_res)) +
-  stat_qq(size = 0.75, shape = 21, fill = NA) +
-  facet_wrap(~species) +
-  stat_qq_line() +
-  labs(y = "Sample Quantiles", x = "Theoretical Quantiles") +
-  theme(aspect.ratio = 1)
+# Prediction (herring), selected years
+plot_map_fc +
+  geom_raster(data = pred %>% filter(year %in% c(1992, 2002, 2012, 2022)),
+              aes(X*1000, Y*1000, fill = exp(est))) +
+  scale_fill_viridis(name = "Length (mm)", trans = "sqrt") +
+  facet_wrap(~year, ncol = 4) +
+  theme_sleek(base_size = 9) +
+  theme(legend.position.inside = c(0.195, 0.75),
+        legend.direction = "vertical",
+        legend.key.width = unit(0.2, "cm"),
+        legend.key.height = unit(0.3, "cm"),
+        legend.title = element_text(size = 6)) +
+  guides(fill = guide_colorbar(position = "inside",
+                               title.position = "top",
+                               title.hjust = 1)) + 
+  geom_sf()
 
-ggsave(paste0(home, "/figures/residuals.pdf"), width = 17, height = 17, units = "cm")
+ggsave(paste0(home, "/figures/st_pred.pdf"), width = 17, height = 7, units = "cm")
+
+# Plot uncertainty
+sim <- predict(m1, nsim = 100, 
+               newdata = pred_grid %>%
+                 mutate(species = "Clupea harengus"))
+
+sim_last <- sim[pred_grid$year == max(pred_grid$year), ] # just plot last year
+pred_last <- pred[pred$year == max(pred_grid$year), ]
+pred_last$lwr <- apply(exp(sim_last), 1, quantile, probs = 0.025)
+pred_last$upr <- apply(exp(sim_last), 1, quantile, probs = 0.975)
+pred_last$sd <- round(apply(exp(sim_last), 1, function(x) sd(x)), 2)
+pred_last$cv <- round(apply(exp(sim_last), 1, function(x) sd(x) / mean(x)), 2)
+
+plot_map +
+  geom_raster(data = pred_last,
+              aes(X*1000, Y*1000, fill = cv)) +
+  scale_fill_viridis(option = "mako") + 
+  theme_sleek(base_size = 9) +
+  theme(legend.position.inside = c(0.25, 0.1),
+        legend.direction = "horizontal",
+        legend.key.width = unit(0.7, "cm"),
+        legend.key.height = unit(0.3, "cm")) +
+  guides(fill = guide_colorbar(position = "inside",
+                               title.position = "top",
+                               title.hjust = 0.5)) + 
+  geom_sf()
+
+ggsave(paste0(home, "/figures/spatial_cv.pdf"), width = 11, height = 11, units = "cm")
 ```
 
 ### Coefficients
@@ -200,101 +367,174 @@ ggsave(paste0(home, "/figures/residuals.pdf"), width = 17, height = 17, units = 
 #| message: false
 #| warning: false
 
-pal <- brewer.pal(n = 6, name = "Paired")[c(2, 6)]
+tidy(m1) %>% as.data.frame()
 
-coef_df %>% 
-  filter(term == "temp_sc") %>% 
-  mutate(sign = ifelse(estimate > 0, "pos", "neg"),
-         sig = ifelse(estimate > 0 & conf.low > 0, "sig", "not sig"),
-         sig = ifelse(estimate < 0 & conf.high < 0, "sig", sig)) %>% 
-  ggplot(aes(estimate, reorder(species, estimate), fill = sig, color = sign, shape = sig)) + 
+sort(unique(d$species))
+
+mean_coefs <- tidy(m1, conf.int = TRUE) %>%
+  filter(term %in% c("temp_sc", "yday_ct")) %>% 
+  mutate(term = ifelse(term == "temp_sc",
+                       "temp_sc:speciesAgonus cataphractus",
+                       "speciesAgonus cataphractus:year_ct"))
+
+# Wrangle data
+coefs_temp <- tidy(m1, conf.int = TRUE) %>%
+  filter(grepl("temp_sc:", term)) %>% 
+  bind_rows(mean_coefs %>% filter(term == "temp_sc:speciesAgonus cataphractus")) %>% 
+  mutate(estimate2 = mean_coefs %>%
+           filter(term == "temp_sc:speciesAgonus cataphractus") %>%
+           pull(estimate) + estimate,
+         
+         conf.low2 = mean_coefs %>%
+           filter(term == "temp_sc:speciesAgonus cataphractus") %>%
+           pull(conf.low) + conf.low,
+         
+         conf.high2 = mean_coefs %>%
+           filter(term == "temp_sc:speciesAgonus cataphractus") %>%
+           pull(conf.high) + conf.high) %>% 
+  mutate(species = str_remove(term, "temp_sc:"),
+         species = str_remove(species, "species"))
+
+
+coefs_year <- tidy(m1, conf.int = TRUE) %>%
+  filter(grepl(":year_ct", term)) %>% 
+  bind_rows(mean_coefs %>% filter(term == "speciesAgonus cataphractus:year_ct")) %>% 
+  mutate(estimate2 = mean_coefs %>%
+           filter(term == "speciesAgonus cataphractus:year_ct") %>%
+           pull(estimate) + estimate,
+         
+         conf.low2 = mean_coefs %>%
+           filter(term == "speciesAgonus cataphractus:year_ct") %>%
+           pull(conf.low) + conf.low,
+         
+         conf.high2 = mean_coefs %>%
+           filter(term == "speciesAgonus cataphractus:year_ct") %>%
+           pull(conf.high) + conf.high) %>% 
+  mutate(species = str_remove(term, ":year_ct"),
+         species = str_remove(species, "species"))
+
+p1 <- coefs_temp %>% 
+  mutate(sign = ifelse(estimate2 > 0, "pos", "neg"),
+         sig = ifelse(estimate2 > 0 & conf.low2 > 0, "sig", "not sig"),
+         sig = ifelse(estimate2 < 0 & conf.high2 < 0, "sig", sig)) %>% 
+  ggplot(aes(estimate2, reorder(species, coefs_year$estimate2), fill = sig, color = sign, shape = sig)) + 
   geom_point(fill = NA) + 
   scale_shape_manual(values = c(21, 19)) +
-  geom_errorbar(aes(xmin = conf.low, xmax = conf.high), 
+  geom_errorbar(aes(xmin = conf.low2, xmax = conf.high2), 
                 width = 0, alpha = 0.3) + 
-  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2) +
+  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
   theme(axis.text.y = element_text(face = "italic")) + 
-  labs(y = "Species", x = "Effect of temperature") + 
-  scale_color_manual(values = pal) + 
-  scale_fill_manual(values = pal) +
+  labs(y = "Species", x = "Temperature slope") + 
+  scale_color_brewer(palette = "Dark2", direction = -1) +
+  scale_fill_brewer(palette = "Dark2", direction = -1) +
   guides(color = "none", shape = "none") +
+  geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
   theme(legend.position = "bottom")
 
-ggsave(paste0(home, "/figures/temp_coef.pdf"), width = 17, height = 8, units = "cm")
+p2 <- coefs_year %>% 
+  mutate(sign = ifelse(estimate2 > 0, "pos", "neg"),
+         sig = ifelse(estimate2 > 0 & conf.low2 > 0, "sig", "not sig"),
+         sig = ifelse(estimate2 < 0 & conf.high2 < 0, "sig", sig)) %>% 
+  ggplot(aes(estimate2, reorder(species, coefs_year$estimate2), fill = sig, color = sign, shape = sig)) + 
+  geom_point(fill = NA) + 
+  scale_shape_manual(values = c(21, 19)) +
+  geom_errorbar(aes(xmin = conf.low2, xmax = conf.high2), 
+                width = 0, alpha = 0.3) + 
+  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
+  theme(axis.text.y = element_text(face = "italic")) + 
+  labs(y = "Species", x = "Year slope") + 
+  scale_color_brewer(palette = "Dark2", direction = -1) +
+  scale_fill_brewer(palette = "Dark2", direction = -1) +
+  guides(color = "none", shape = "none") +
+  geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
+  theme(legend.position = "bottom")
+
+p2 + p1 + plot_layout(axes = "collect")
+
+ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 10, units = "cm")
 ```
 
-### Trends
+### Conditional predictions of temperature and year, with real values on the x and data, on 3 select species with contrasting trends
 
 ```{r}
 #| message: false
-#| warning: false
 
-ggplot(cond_df, aes(year, est)) + 
-  geom_point(size = 0.8) +
-  geom_errorbar(aes(ymin = est - 1.96*est_se,
-                    ymax = est + 1.96*est_se),
-                width = 0, alpha = 0.3) +
-  theme_facet_map(base_size = 8) +
-  labs(y = "Predicted length (mm)", x = "Year") + 
-  facet_wrap(~species, ncol = 5, scales = "free")
+# Year effect
+nd_y <- d %>%
+  filter(species %in% c("Limanda limanda", "Maurolicus muelleri", "Sardina pilchardus")) %>% 
+  group_by(species) %>%
+  data_grid(year_ct = unique(year_ct)) %>% 
+  ungroup() %>% 
+  mutate(yday_ct = 0,
+         temp_sc = 0,
+         year = as.numeric(year_ct + median(d$year))) %>% 
+  filter(year %in% unique(d$year))
 
-ggsave(paste0(home, "/figures/trends.pdf"), width = 17, height = 15, units = "cm")
+pred_y <- predict(m1, newdata = nd_y, re_form = NA, re_form_iid = NA, se_fit = TRUE)
 
+# Temperature effect
+nd_t <- d %>%
+  filter(species %in% c("Limanda limanda", "Maurolicus muelleri", "Sardina pilchardus")) %>% 
+  group_by(species) %>%
+  data_grid(temp_sc = unique(temp_sc)) %>% 
+  ungroup() %>% 
+  mutate(yday_ct = 0,
+         year_ct = 10, # 2015
+         year = as.numeric(year_ct + median(d$year)),
+         temp = (temp_sc * sd(d$temp)) + mean(d$temp)) %>% 
+  filter(year %in% unique(d$year))
 
-# Standardized trends 
-cond_df %>% 
-  mutate(est_z = (est - mean(est)) / sd(est), .by = species) %>% 
-  ggplot(aes(year, est_z, color = species)) + 
-  geom_line() +
-  geom_smooth(aes(year, est_z), inherit.aes = FALSE, se = FALSE, 
-              color = pal[2]) +
-  scale_color_viridis(discrete = TRUE, name = "") + 
-  labs(y = "z-scored predicted size", x = "Year") + 
-  guides(color = guide_legend(ncol = 4)) + 
-  theme(legend.position = "bottom",
-        legend.key.size = unit(0.2, "cm")) +
-  NULL
+pred_t <- predict(m1, newdata = nd_t, re_form = NA, re_form_iid = NA, se_fit = TRUE)
 
-ggsave(paste0(home, "/figures/z_trends.pdf"), width = 17, height = 17, units = "cm")
-```
+# Plot!
+lab_y <- tibble(species = c("Limanda limanda", "Maurolicus muelleri", "Sardina pilchardus"),
+                lab = c("a)", "b)", "c)"))
+  
+p1 <- ggplot(pred_y, aes(year, exp(est), color = species, fill = species)) + 
+  geom_jitter(data = d %>% filter(species %in% c(nd_y$species)),
+              aes(year, length_mm), alpha = 0.5, height = 0, width = 0.3,
+              size = 0.95, fill = NA, shape = 21) +
+  geom_ribbon(aes(ymin = exp(est - 1.96*est_se),
+                  ymax = exp(est + 1.96*est_se)), alpha = 0.4,
+              fill = "grey", color = NA) +
+  geom_line(linewidth = 1, color = "grey50") +
+  theme(strip.text = element_text(face = "italic")) +
+  geom_text(data = lab_y, aes(label = lab), x = 1993, y = Inf, vjust = 2,
+            color = "grey20") +
+  labs(x = "Year", y = "Length (mm)") + 
+  coord_cartesian(xlim = c(min(pred_y$year), max(pred_y$year))) +
+  guides(color = "none", fill = "none") +
+  facet_wrap(~species, scales = "free") +
+  scale_color_brewer(palette = "Accent") +
+  scale_fill_brewer(palette = "Accent")
 
-### Random fields
+p1
 
-```{r}
-#| message: false
-#| warning: false
+lab_t <- tibble(species = c("Limanda limanda", "Maurolicus muelleri", "Sardina pilchardus"),
+                lab = c("d)", "e)", "f)"))
 
-pred_grid_df_sub <- pred_grid_df %>% 
-  group_by(species) %>% 
-  filter(year == max(year))
+p2 <- ggplot(pred_t, aes(temp, exp(est), color = species, fill = species)) + 
+  geom_jitter(data = d %>% filter(species %in% c(nd_y$species)),
+              aes(temp, length_mm), alpha = 0.5, height = 0, width = 0.3,
+              size = 0.95, fill = NA, shape = 21) +
+  geom_ribbon(aes(ymin = exp(est - 1.96*est_se),
+                  ymax = exp(est + 1.96*est_se)), alpha = 0.4,
+              fill = "grey", color = NA) +
+  geom_line(linewidth = 1, color = "grey50") +
+  theme(strip.text = element_text(face = "italic")) +
+  geom_text(data = lab_t, aes(label = lab), x = 0.5, y = Inf, vjust = 2,
+            color = "grey20") +
+  labs(x = "Temperature (°C)", y = "Length (mm)") + 
+  coord_cartesian(xlim = c(min(pred_t$temp), max(pred_t$temp))) +
+  guides(color = "none", fill = "none") +
+  facet_wrap(~species, scales = "free") + 
+  scale_color_brewer(palette = "Accent") +
+  scale_fill_brewer(palette = "Accent")
 
-plot_map_fc +
-  geom_raster(data = pred_grid_df_sub %>% drop_na(omega_s),
-              aes(X*1000, Y*1000, fill = omega_s)) +
-  scale_fill_gradient2() + 
-  theme_facet_map(base_size = 8) +
-  facet_wrap(~species, ncol = 4)
+p2
 
-ggsave(paste0(home, "/figures/omega.pdf"), width = 17, height = 15, units = "cm")
-```
+p1 / p2 +
+  plot_layout(axes = "collect")
 
-### Spatial predictions
-For all years
-
-```{r}
-#| message: false
-#| warning: false
-
-# Z- score sizes by species to plot on the same plot
-
-plot_map_fc +
-  geom_raster(data = pred_grid_df %>% 
-                drop_na(omega_s) %>% # Drop the species without spatial effects
-                mutate(est_z = (est - mean(est)) / sd(est), .by = "species"), 
-              aes(X*1000, Y*1000, fill = est_z)) +
-  scale_fill_viridis() + 
-  theme_facet_map(base_size = 8) +
-  facet_wrap(~species, ncol = 4)
-
-ggsave(paste0(home, "/figures/spatial_pred.pdf"), width = 17, height = 15, units = "cm")
+ggsave(paste0(home, "/figures/conditional.pdf"), width = 17, height = 12, units = "cm")
 ```

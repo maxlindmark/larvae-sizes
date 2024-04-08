@@ -74,7 +74,7 @@ cell_width <- 3
 pred_grid <- expand.grid(
   X = seq(min(d$X), max(d$X), cell_width),
   Y = seq(min(d$Y), max(d$Y), cell_width),
-  year = c(1993:2021)
+  year = seq(min(d$year), max(d$year))
   )
 
 ggplot(pred_grid %>% filter(year == 2019), aes(X, Y)) +
@@ -146,93 +146,137 @@ plot_map +
 ### Temperature
 
 ```{r temperature}
-# Uhhhh this is annoying. The extent of either the NS or BS do not cover the whole data. For now, I'm using both and splitting the data... 
+# Satelite derived temperatures
+# https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
+# https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
 
-print(nc_open(paste0(home, "/data/copernicus/cmems_mod_nws_phy-t_my_7km-3D_P1M-m_1711622425797.nc")))
+print(nc_open(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")))
 
-temp_tibble_ns <- tidync(paste0(home, "/data/copernicus/cmems_mod_nws_phy-t_my_7km-3D_P1M-m_1711622425797.nc")) %>%
+temp_tibble1 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")) %>%
   hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
          day = day(date),
          year = year(date)) %>% 
-  # Filter January
   filter(month == 1) %>% 
-  rename(sst = thetao) %>% 
-  add_utm_columns()
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
 
-# plot_map + 
-#   geom_point(data = temp_tibble, aes(X*1000, Y*1000))
-
-# Now do the baltic
-print(nc_open(paste0(home, "/data/copernicus/cmems_mod_bal_phy_my_P1M-m_1711622828562.nc")))
-
-# https://data.marine.copernicus.eu/product/BALTICSEA_MULTIYEAR_PHY_003_011/download?dataset=cmems_mod_bal_phy_my_P1M-m_202303
-temp_tibble_bs <- tidync(paste0(home, "/data/copernicus/cmems_mod_bal_phy_my_P1M-m_1711622828562.nc")) %>%
+temp_tibble2 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802082358.nc")) %>%
   hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
          day = day(date),
          year = year(date)) %>% 
-  # Filter January
   filter(month == 1) %>% 
-  rename(sst = thetao) %>% 
-  add_utm_columns()
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
 
-# plot_map + 
-#   geom_point(data = temp_tibble_bs, aes(X*1000, Y*1000))
+temp_tibble3 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802166794.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
 
-# Combine temperature tibbles
+temp_tibble4 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802239078.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
 
-temp_tibble <- bind_rows(temp_tibble_ns %>%
-                           filter(longitude <= min(temp_tibble_bs$longitude)), 
-                         temp_tibble_bs)
+temp_tibble5 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802304331.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
 
-# Loop through all month-year combos, extract the temperatures at the data locations
+temp_tibble6 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802375462.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
+
+temp_tibble7 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802434416.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
+
+temp_tibble8 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802668854.nc")) %>%
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  group_by(year, longitude, latitude) %>% 
+  summarise(sst = mean(analysed_sst) - 273.15) %>% 
+  ungroup()
+
+temp_tibble <- bind_rows(temp_tibble1,
+                         temp_tibble2,
+                         temp_tibble3,
+                         temp_tibble4,
+                         temp_tibble5,
+                         temp_tibble6,
+                         temp_tibble7,
+                         temp_tibble8)
+
+hist(temp_tibble$sst)
+
+unique(temp_tibble$year)
+
+# Loop through all year combos, extract the temperatures at the data locations
 
 # Loop, make raster and extract
 temp_list <- list()
 
-# Trim years we have temperature for (again, annoying! Fix the temperatures later)
 
 for(i in unique(pred_grid$year)) {
   
   d_sub <- filter(pred_grid, year == i)
-  temp_tibble_sub_bs <- filter(temp_tibble_bs, year == i)
-  temp_tibble_sub_ns <- filter(temp_tibble_ns, year == i)
+  temp_tibble_sub <- filter(temp_tibble, year == i)
   
   # Convert to raster
-  temp_raster_bs <- as_spatraster(temp_tibble_sub_bs, xycols = 2:3,
-                                  crs = "WGS84", digits = 3)
+  temp_raster <- as_spatraster(temp_tibble_sub, xycols = 2:3,
+                               crs = "WGS84", digits = 2)
 
-  temp_raster_ns <- as_spatraster(temp_tibble_sub_ns, xycols = 2:3,
-                                  crs = "WGS84", digits = 3)
-    
-  # p1 <- ggplot() + 
-  #   geom_spatraster(data = temp_raster_bs$sst, aes(fill = sst))
-  # 
-  # p2 <- ggplot() + 
-  #   geom_spatraster(data = temp_raster_ns$sst, aes(fill = sst))
-  # 
-  # p1 + p2
-  
+  ggplot() +
+    geom_spatraster(data = temp_raster$sst, aes(fill = sst))
+
   # Extract from raster
-  d_bs <- d_sub %>% 
-    filter(lon >= min(temp_tibble_sub_bs$longitude))
-  
-  d_ns <- d_sub %>% 
-    filter(lon < min(temp_tibble_sub_bs$longitude))
-  
-  d_bs$temp <- terra::extract(temp_raster_bs$sst,
-                              d_bs %>% dplyr::select(lon, lat))$sst  
+  d_sub$temp <- terra::extract(temp_raster$sst,
+                               d_sub %>% dplyr::select(lon, lat))$sst  
     
-  d_ns$temp <- terra::extract(temp_raster_ns$sst,
-                              d_ns %>% dplyr::select(lon, lat))$sst  
-    
-  d_comb <- bind_rows(d_ns, d_bs)
-  
   # Save
-  temp_list[[i]] <- d_comb
+  temp_list[[i]] <- d_sub
   
 }
 

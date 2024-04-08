@@ -10,7 +10,7 @@ theme_set(theme_sleek())
 sf::sf_use_s2(FALSE)
 
 # Specify map ranges
-ymin = 55.9; ymax = 59; xmin = 7.8; xmax = 13.1
+ymin = 55.9; ymax = 59; xmin = 7.6; xmax = 13.3
 
 map_data <- rnaturalearth::ne_countries(
   scale = "large",
@@ -37,7 +37,8 @@ theme_facet_map <- function(base_size = 11, base_family = "") {
       legend.key.height = unit(0.4, "line"),
       legend.key.width = unit(2, "line"),
       legend.spacing.x = unit(0.1, 'cm'),
-      legend.position = "bottom",
+      #legend.position = "bottom",
+      legend.position = c(0.73, 0.04)
     )
 }
 
@@ -45,8 +46,11 @@ theme_facet_map <- function(base_size = 11, base_family = "") {
 xmin2 <- 447700
 xmax2 <- 728000
 
-ymin2 <- 6220000
+ymin2 <- 6215000
 ymax2 <- 6526000
+
+xrange <- xmax2 - xmin2
+yrange <- ymax2 - ymin2
 
 plot_map <- 
   ggplot(swe_coast_proj) + 
@@ -69,4 +73,3 @@ plot_map_fc <-
   guides(colour = guide_colorbar(title.position = "top", title.hjust = 0.5),
          fill = guide_colorbar(title.position = "top", title.hjust = 0.5)) +
   NULL
-
