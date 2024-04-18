@@ -287,17 +287,25 @@ pred_grid <- bind_rows(temp_list)
 
 ```{r}
 plot_map_fc + 
-  geom_raster(data = pred_grid, aes(X*1000, Y*1000, fill = temp)) + 
-  facet_wrap(~year, ncol = 8) +
-  scale_fill_viridis(option = "magma")
+  geom_raster(data = pred_grid %>% filter(!year == 2011), aes(X*1000, Y*1000, fill = temp)) + 
+  facet_wrap(~year, ncol = 7) + 
+  theme_facet_map(base_size = 10) + 
+  geom_sf() +
+  scale_fill_viridis(option = "magma", name = "January SST (°C)")
+
+ggsave(paste0(home, "/figures/sst.pdf"), width = 17, height = 15, units = "cm")
+
 
 # Mean temperature in the domain over time
 pred_grid %>% 
   drop_na(temp) %>% 
   summarise(temp = mean(temp), .by = "year") %>% 
   ggplot(aes(year, temp)) + 
-  geom_point() + 
-  geom_smooth(method = "lm")
+  geom_point(size = 1.5, color = "gray10") + 
+  labs(y = "Mean January SST (°C)", x = "Year") + 
+  geom_smooth(method = "gam", formula = y~s(x, k = 8), color = "tomato3")
+
+ggsave(paste0(home, "/figures/sst_mean.pdf"), width = 11, height = 11, units = "cm")
 ```
 
 ## Save

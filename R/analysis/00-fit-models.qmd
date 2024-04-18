@@ -28,6 +28,7 @@ library(viridis)
 library(RColorBrewer)
 library(modelr)
 library(ggstats)
+library(ggspatial)
 library(ggsidekick); theme_set(theme_sleek())
 
 home <- here::here()
@@ -97,16 +98,15 @@ d %>%
 coul <- brewer.pal(11, "Spectral") 
 coul <- colorRampPalette(coul)(length(unique(d$species)))
 
-p1 <- ggplot(d, aes(log(length_mm), fill = species)) + 
+p1 <- ggplot(d, aes(length_mm, fill = species)) + 
   geom_histogram() + 
   scale_fill_manual(values = coul, name = "Species") + 
   coord_cartesian(expand = 0) + 
-  labs(y = "Count", x = "log(Length (mm))", tag = "b)") + 
+  labs(y = "Count", x = "Length (mm)", tag = "b)") + 
   theme(legend.text = element_text(face = "italic", size = 7),
         legend.key.size = unit(0.25, "cm"),
         legend.position.inside = c(0.2, 0.69),
-        plot.tag = element_text()) +
-  guides(fill = guide_legend(position = "inside"))
+        plot.tag = element_text())
 
 # Load prediction grid
 pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) %>% 
@@ -128,7 +128,7 @@ p2 <- plot_map +
   geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
              size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") +
   scale_fill_viridis(option = "magma", name = "Temperature (°C)") + 
-  theme(legend.position.inside = c(0.25, 0.1),
+  theme(legend.position.inside = c(0.25, 0.12),
         legend.direction = "horizontal",
         legend.key.width = unit(0.5, "cm"),
         legend.key.height = unit(0.2, "cm"),
@@ -141,21 +141,114 @@ p2 <- plot_map +
                                title.hjust = 0.5)) + 
   geom_sf() +
   annotate("text", label = "Sweden", x = xmin2 + 0.95*xrange, y = ymin2 + 0.75*yrange,
-           color = "gray50", size = 3) + 
+           color = "gray50", size = 2.5) + 
   annotate("text", label = "Norway", x = xmin2 + 0.08*xrange, y = ymin2 + 0.95*yrange,
-           color = "gray50", size = 3) +
+           color = "gray50", size = 2.5) +
   annotate("text", label = "Denmark", x = xmin2 + 0.42*xrange, y = ymin2 + 0.45*yrange,
-           color = "gray50", size = 3)
-  
+           color = "gray50", size = 2.5) + 
+  guides(fill = guide_colorbar(position = "inside", title.position = "top", title.hjust = 0.5)) + 
+  annotation_scale(bar_cols = c("grey30", "white"), height = unit(0.1, "cm")) + 
+  annotation_north_arrow(location = "tr", which_north = "true", height = unit(0.85, "cm"),
+                         width = unit(0.85, "cm"), pad_x = unit(0.1, "in"), pad_y = unit(0.1, "in"),
+                         style = north_arrow_fancy_orienteering(
+                           fill = c("grey40", "white"),
+                           line_col = "grey20"))
+
 p2 + p1
 
-ggsave(paste0(home, "/figures/data_map.pdf"), width = 22, height = 12, units = "cm")
+ggsave(paste0(home, "/figures/data_map.pdf"), width = 25, height = 12, units = "cm")
 
 # To load entire cache in interactive r session, do: 
 # qwraps2::lazyload_cache_dir(path = "R/analysis/00-fit-models_cache/html")
 ```
 
 ### Fit alternative models
+
+test models
+
+```{r}
+# Basic model
+
+# These had very low spatial sigma, omit these and see if warnings dissapear?
+d2 <- d #%>%
+  #filter(!species %in% c("Aphia minuta", "Taurulus bubalis", "Argentina silus"))
+
+mesh <- make_mesh(d2,
+                  xy_cols = c("X", "Y"),
+                  cutoff = 8)
+
+mt <- sdmTMB(
+  #length_mm ~ 0 + species + temp_sc + year_ct + yday_ct,
+  length_mm ~ temp_sc*species_f + yday_ct, #+ year_ct*species_f,
+  data = d2,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "off",
+  spatial = "off",
+  spatial_varying = ~0 + species_f,
+  time = "year")
+
+sanity(mt)
+mt
+
+t <- tidy(mt, effects = "ran_pars") %>% 
+  filter(!term %in% c("range", "phi"))
+
+# How many sigmas below 0.01?
+# Eeeem,, only 2/20 species have sigmas that are somewhat big?
+t %>% filter(estimate < 0.01)
+
+t %>% as.data.frame()
+
+tidy(mt) %>% filter(!term %in% c("(Intercept)", "temp_sc")) %>% as.data.frame()
+
+
+
+# 1                       species_fAmmodytidae  1.348078369 0.0590645757
+# 2                 species_fAnguilla anguilla  2.050789596 0.0207020004
+# 3                      species_fAphia minuta  1.267782281 0.0199809324
+# 4                   species_fArgentina silus  1.036938395 0.0402559929
+# 5                     species_fArgentina spp  1.154908369 0.0583262156
+# 6              species_fChirolophis  ascanii  0.542661471 0.0245172160
+# 7                   species_fClupea harengus  1.075639215 0.0180754487
+# 8          species_fCrystallogobius linearis  0.914142938 0.0182332551
+# 9              species_fEnchelyopus cimbrius  0.887068962 0.0601792034
+# 10                  species_fLimanda limanda -0.172057076 0.0666971755
+# 11              species_fMaurolicus muelleri  1.230839003 0.0653764468
+# 12                 species_fMicrostomus kitt  0.987945308 0.0240081300
+# 13           species_fMyoxocephalus scorpius -0.112264467 0.0224442710
+# 14                 species_fPholis gunnellus  0.406425179 0.0228120406
+# 15                species_fPomatoschistus sp  1.464223786 0.0189588517
+# 16               species_fSardina pilchardus  0.981570206 0.0303350828
+# 17                species_fSprattus sprattus  1.622430985 0.0674224960
+# 18           species_fSyngnathus rostellatus  1.959851355 0.0219943069
+# 19                 species_fTaurulus bubalis -0.199119903 0.0455757648
+
+pred_grid_t <- pred_grid %>%
+  filter(year == max(year)) %>% 
+  crossing(species_f = unique(d$species_f))
+
+pred_t <- predict(mt, newdata = pred_grid_t)
+
+pred_t <- pred_t %>% 
+  pivot_longer(c(17:36), names_to = "species2", values_to = "omega_s2")
+
+# Spatial random
+names(pred_t)
+
+ggplot(aes())
+
+plot_map +
+  geom_raster(data = pred_t,
+              aes(X*1000, Y*1000, fill = omega_s2)) +
+  scale_fill_gradient2(name = "Spatial random effect") +
+  facet_wrap(~species2) +
+  #geom_sf() + 
+  NULL
+
+sanity(mt)
+
+```
 
 ```{r fit models}
 #| message: false
