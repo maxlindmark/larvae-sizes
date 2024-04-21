@@ -26,13 +26,22 @@ depthStudyArea <- getNOAA.bathy(
 # extract depths at the locations observed
 depthObservations <- get.depth(depthStudyArea, x=larvae$lon, y=larvae$lat, locator=F)
 
-## P3: Plot the results  
+# Scale the depth at observations
+depthObservations <- depthObservations %>% 
+  mutate(
+    depth_positive = depth * (-1), 
+    depth_scaled = (depth_positive-mean(depth_positive))/sd(depth_positive), 
+  )
+
+## P3: Wrangle the results
 depthStudyArea <- as.xyz(depthStudyArea) %>% 
   dplyr::rename(
     lon = V1, 
     lat = V2, 
     depth = V3
   )
+
+## P4: Plot the results  
 
 # Import country data
 country <- ne_countries(scale = "large", returnclass = "sf")
@@ -111,4 +120,4 @@ ggsave(
 )
 
 # Save depth vector 
-write.csv(depthObservations["depth"], "data/covariates/depth/depthVector.csv", row.names = F)
+write.csv(depthObservations[,c("depth", "depth_scaled")], "data/covariates/depth/depthVector.csv", row.names = F)
