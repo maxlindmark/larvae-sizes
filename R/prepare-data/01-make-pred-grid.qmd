@@ -284,8 +284,6 @@ for(i in unique(pred_grid$year)) {
 pred_grid <- bind_rows(temp_list)
 ```
 
-#### Plot temperature
-
 ```{r}
 plot_map_fc + 
   geom_raster(data = pred_grid %>% filter(!year == 2011), aes(X*1000, Y*1000, fill = temp)) + 
@@ -308,7 +306,6 @@ pred_grid %>%
 
 ggsave(paste0(home, "/figures/sst_mean.pdf"), width = 11, height = 11, units = "cm")
 ```
-
 
 ### Chlorophyll
 
@@ -407,11 +404,9 @@ for(i in unique(chl_tibble$year)) {
 }
 
 pred_grid <- bind_rows(chl_list)
-
 ```
 
 ```{r}
-
 plot_map_fc + 
   geom_raster(data = pred_grid %>% filter(!year == 2011), aes(X*1000, Y*1000, fill = chl)) + 
   facet_wrap(~year, ncol = 7) + 
