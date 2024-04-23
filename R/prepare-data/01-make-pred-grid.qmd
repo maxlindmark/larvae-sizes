@@ -39,6 +39,7 @@ theme_set(theme_sleek())
 home <- here::here()
 # source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
 source(paste0(home, "/R/functions/map-plot.R"))
+
 ```
 
 Read data and depth-raster
@@ -112,7 +113,7 @@ pred_grid$lat <- lonlat[, 2]
 # Add depth now to remove islands and remaining land
 # https://gis.stackexchange.com/questions/411261/read-multiple-layers-raster-from-ncdf-file-using-terra-package
 # https://emodnet.ec.europa.eu/geoviewer/
-dep_raster <- terra::rast(paste0(home, "/data/Mean depth natural colour (with land).nc"))
+dep_raster <- terra::rast(paste0(home, "/data/covariates/depth/Mean depth natural colour (with land).nc"))
 class(dep_raster)
 crs(dep_raster, proj = TRUE)
 
@@ -150,9 +151,9 @@ plot_map +
 # https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
 # https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
 
-print(nc_open(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")))
+print(nc_open(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")))
 
-temp_tibble1 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")) %>%
+temp_tibble1 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -163,7 +164,7 @@ temp_tibble1 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVA
   summarise(sst = mean(analysed_sst) - 273.15) %>% 
   ungroup()
 
-temp_tibble2 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802082358.nc")) %>%
+temp_tibble2 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802082358.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -174,7 +175,7 @@ temp_tibble2 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVA
   summarise(sst = mean(analysed_sst) - 273.15) %>% 
   ungroup()
 
-temp_tibble3 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802166794.nc")) %>%
+temp_tibble3 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802166794.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -185,7 +186,7 @@ temp_tibble3 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVA
   summarise(sst = mean(analysed_sst) - 273.15) %>% 
   ungroup()
 
-temp_tibble4 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802239078.nc")) %>%
+temp_tibble4 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802239078.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -196,7 +197,7 @@ temp_tibble4 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVA
   summarise(sst = mean(analysed_sst) - 273.15) %>% 
   ungroup()
 
-temp_tibble5 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802304331.nc")) %>%
+temp_tibble5 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802304331.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -207,7 +208,7 @@ temp_tibble5 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVA
   summarise(sst = mean(analysed_sst) - 273.15) %>% 
   ungroup()
 
-temp_tibble6 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802375462.nc")) %>%
+temp_tibble6 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802375462.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -218,7 +219,7 @@ temp_tibble6 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVA
   summarise(sst = mean(analysed_sst) - 273.15) %>% 
   ungroup()
 
-temp_tibble7 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802434416.nc")) %>%
+temp_tibble7 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802434416.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -229,7 +230,7 @@ temp_tibble7 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVA
   summarise(sst = mean(analysed_sst) - 273.15) %>% 
   ungroup()
 
-temp_tibble8 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802668854.nc")) %>%
+temp_tibble8 <- tidync(paste0(home, "/data/covariates/sst/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802668854.nc")) %>%
   hyper_tibble() %>% 
   mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
   mutate(month = month(date),
@@ -306,6 +307,130 @@ pred_grid %>%
   geom_smooth(method = "gam", formula = y~s(x, k = 8), color = "tomato3")
 
 ggsave(paste0(home, "/figures/sst_mean.pdf"), width = 11, height = 11, units = "cm")
+```
+
+
+### Chlorophyll
+
+```{r chlorophyll}
+# Satelite derived chlorophyll
+# https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
+# https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/download
+
+# This database reports chl predictions at different depths in the period 1993-2022. 
+# We need to load and finally bind this data in portions, to avoid size limits. 
+
+chl_tibble_1993_1999 <- tidync(paste0(home, '/data/covariates/chlorophyll/cmems_mod_glo_bgc_my_0.25_P1D-m_1713795858492_01011993_12311999.nc')) %>% # 59N 56S 8W 13E; from 01/01/2015 to 12/31/2022
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  select(-time, -date) %>% 
+  group_by(year, longitude, latitude) %>% 
+  rename(lon = longitude, lat = latitude) %>% 
+  summarise(chl = mean(chl)) %>% 
+  ungroup() 
+
+chl_tibble_2000_2008 <- tidync(paste0(home, '/data/covariates/chlorophyll/cmems_mod_glo_bgc_my_0.25_P1D-m_1713795803251_01012000_12312008.nc')) %>% # 59N 56S 8W 13E; from 01/01/2015 to 12/31/2022
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  select(-time, -date) %>% 
+  group_by(year, longitude, latitude) %>% 
+  rename(lon = longitude, lat = latitude) %>% 
+  summarise(chl = mean(chl)) %>% 
+  ungroup() 
+
+chl_tibble_2009_2016 <- tidync(paste0(home, '/data/covariates/chlorophyll/cmems_mod_glo_bgc_my_0.25_P1D-m_1713795716234_01012009_12312016.nc')) %>% # 59N 56S 8W 13E; from 01/01/2015 to 12/31/2022
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  select(-time, -date) %>% 
+  group_by(year, longitude, latitude) %>% 
+  rename(lon = longitude, lat = latitude) %>% 
+  summarise(chl = mean(chl)) %>% 
+  ungroup() 
+
+chl_tibble_2017_2022 <- tidync(paste0(home, '/data/covariates/chlorophyll/cmems_mod_glo_bgc_my_0.25_P1D-m_1713795613611_01012017_12312022.nc')) %>% # 59N 56S 8W 13E; from 01/01/2015 to 12/31/2022
+  hyper_tibble() %>% 
+  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
+  mutate(month = month(date),
+         day = day(date),
+         year = year(date)) %>% 
+  filter(month == 1) %>% 
+  select(-time, -date) %>% 
+  group_by(year, longitude, latitude) %>% 
+  rename(lon = longitude, lat = latitude) %>% 
+  summarise(chl = mean(chl)) %>% 
+  ungroup() 
+
+chl_tibble <- bind_rows(chl_tibble_1993_1999,
+                         chl_tibble_2000_2008,
+                         chl_tibble_2009_2016,
+                         chl_tibble_2017_2022)
+
+hist(chl_tibble$chl)
+unique(chl_tibble$year)
+
+# Loop through all year combos, extract the temperatures at the data locations
+
+# Loop, make raster and extract
+chl_list <- list()
+
+for(i in unique(chl_tibble$year)) {
+  
+  d_sub <- filter(pred_grid, year == i)
+  chl_tibble_sub <- filter(chl_tibble, year == i)
+  
+  # Convert to raster
+  chl_raster <- as_spatraster(chl_tibble_sub, xycols = 2:3,
+                               crs = "WGS84", digits = 2)
+  
+  ggplot() +
+    geom_spatraster(data = chl_raster$chl, aes(fill = chl))
+  
+  # Extract from raster
+  d_sub$chl <- terra::extract(chl_raster$chl,
+                               d_sub %>% dplyr::select(lon, lat))$chl  
+  
+  # Save
+  chl_list[[i]] <- d_sub
+  
+}
+
+pred_grid <- bind_rows(chl_list)
+
+```
+
+```{r}
+
+plot_map_fc + 
+  geom_raster(data = pred_grid %>% filter(!year == 2011), aes(X*1000, Y*1000, fill = chl)) + 
+  facet_wrap(~year, ncol = 7) + 
+  theme_facet_map(base_size = 10) + 
+  geom_sf() +
+  scale_fill_viridis(option = "viridis", name = "January chl (mg/m^3)")
+
+ggsave(paste0(home, "/figures/chl.pdf"), width = 17, height = 15, units = "cm")
+
+# Mean chlorophyll in the domain over time
+pred_grid %>% 
+  drop_na(chl) %>% 
+  summarise(chl = mean(chl), .by = "year") %>% 
+  ggplot(aes(year, chl)) + 
+  geom_point(size = 1.5, color = "gray10") + 
+  labs(y = "Mean January chl (mg/m^3)", x = "Year") + 
+  geom_smooth(method = "gam", formula = y~s(x, k = 8), color = "tomato3")
+
+ggsave(paste0(home, "/figures/chl_mean.pdf"), width = 11, height = 11, units = "cm")
 ```
 
 ## Save
