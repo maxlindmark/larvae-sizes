@@ -2,4 +2,4 @@
 
 This repo contains data and R code for cleaning and fitting geostatistical GLMMs with [sdmTMB](https://github.com/pbs-assess/sdmTMB), to larvae data hosted by SLU
 
-With Malin Werner, Peter Thor, Philip Jacobson
+With Eros Quesada, Malin Werner, Peter Thor, Federico Mailoli, Valerio Bartolino and Philip Jacobson
