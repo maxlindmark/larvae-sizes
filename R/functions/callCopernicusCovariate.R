@@ -30,7 +30,7 @@
 #+ 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
 callCopernicusCovariate <- function(
-  covariate, # One of: sst, chl, depth
+  covariate, # One of: sst, chlorophyll, depth
   path, # path to covariates
   messages = 1 # dichotomous
 ){
@@ -48,16 +48,33 @@ callCopernicusCovariate <- function(
     if(messages == 1){
       cat(cyan("Processing"), "-", paste0("Gathering data from df ", which(listCovFilesStrings == x),"/",length(listCovFilesStrings), "."), "\n")
     }
-    tidync(paste(pathToCovariate, x, sep = "/")) %>%
+    covFile <- tidync(paste(pathToCovariate, x, sep = "/")) %>%
       hyper_tibble() %>% 
       mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
       mutate(month = month(date),
              day = day(date),
-             year = year(date)) %>% 
-      filter(month == 1) %>% 
-      group_by(year, longitude, latitude) %>% 
-      summarise(sst = mean(analysed_sst) - 273.15) %>% 
-      ungroup()
+             year = year(date))
+    
+    # Filter month
+    covFile <- covFile %>% 
+      filter(month == 1)
+    
+    # Extract mean by year x lon x lat
+    if(covariate == "sst"){
+      covFile <- covFile %>% 
+        group_by(year, longitude, latitude) %>% 
+        summarise(sst = mean(analysed_sst) - 273.15) %>% 
+        ungroup()
+    }
+    if(covariate == "chlorophyll"){
+      covFile <- covFile %>% 
+        group_by(year, longitude, latitude) %>% 
+        summarise(chl = mean(chl)) %>% 
+        ungroup()
+    }
+    
+    covFile
+
   })
   
   # Inform that data is a subset (may be useful to add filtering options as arguments)
@@ -65,6 +82,7 @@ callCopernicusCovariate <- function(
     cat("\n"); cat("\n")
     cat(cyan("Note"), "-", "The data were filtered internally for January month")
   }
+  
   # From list of tibbles to tibble 
   dfCov <- bind_rows(listCovFiles)
   
