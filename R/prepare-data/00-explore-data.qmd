@@ -43,7 +43,7 @@ home <- here::here()
 # Load all custom functions in R/function
 # - map-plot [source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")]
 # - callCopernicusCovariate
-
+# - extractCovariateAtLocation
 for(fun in list.files(paste0(home, "/R/functions"))){
   source(paste(home, "R/functions", fun, sep = "/"))
 }
@@ -302,7 +302,53 @@ d <- extractCovariateAtLocation(
 
 ```
 
-Plot response variables
+### Satelite derived chlorophyll abundance
+https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
+
+```{r}
+## Load satellite derived chlorophyll
+# Source: https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/download
+# Print details
+print(nc_open(paste(covPath, "chlorophyll", "cmems_mod_glo_bgc_my_0.25_P1D-m_1713795613611_01012017_12312022.nc", sep = "/")))
+
+# Load and gather the temperature data in a tibble
+chl_tibble <- callCopernicusCovariate("chlorophyll", messages = 1) 
+
+
+```
+
+```{r}
+
+# Visualize chlorophyll frequency distribution
+hist(chl_tibble$chl)
+
+# Visualize chlorophyll spatial distribution
+# plot_map +
+#   geom_point(data = chl_tibble,
+#              aes(X*1000, Y*1000, color = chl))
+
+# Obtain temporal availability, this will be the temporal window to filter the data 
+sort(unique(chl_tibble$year))
+
+# Trim years we have temperature for (again, annoying! Fix the temperatures later)
+d <- d %>% 
+  filter(year %in% unique(chl_tibble$year)) # We loose 13% of the data by including chl. 
+
+# Loop through all year combos, extract the temperatures at the data locations
+d <- extractCovariateAtLocation(
+  "chl", # Name of the covariate to extract. One of: sst, chlorophyll, depth. 
+  d, # A df containing the set of yearand locations to be evaluated.
+  temp_tibble,  # A df containing the covariate at location
+  "chl",# Name to give to the covariate evaluated at location in the df
+  messages = 1 # dichotomous
+)
+
+```
+
+
+
+
+## Plot response variables
 
 ```{r}
 #| message: false
