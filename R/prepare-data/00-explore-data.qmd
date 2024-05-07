@@ -252,7 +252,7 @@ https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_01
 
 ```{r}
 
-# Specify covariate path for simplicity
+# Specify covariates path for simplicity
 covPath <- paste0(home, "/data/covariates")
 
 ```
