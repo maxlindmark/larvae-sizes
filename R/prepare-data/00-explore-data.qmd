@@ -36,9 +36,16 @@ library(viridis)
 library(devtools)
 library(ggsidekick); theme_set(theme_sleek())
 
+# Point to wd 
 home <- here::here()
-# source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-source(paste0(home, "/R/functions/map-plot.R"))
+
+# Load all custom functions in R/function
+# - map-plot [source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")]
+for(fun in list.files("/R/functions")){
+  source(paste("/R/functions", fun, sep = "/"))
+}
+
+
 ```
 
 # Explore data
@@ -239,16 +246,24 @@ summary(d$year)
 
 ```
 
-## Add temperature covariate to hauls
+## Add covariate to hauls
 
 https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
+
+```{r}
+
+# Specify covariate path for simplicity
+covPath <- paste0(home, "/data/covariates")
+
+```
 
 ### Satelite derived temperatures
 
 ```{r}
 # https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
 
-print(nc_open(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")))
+print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc", sep = "/")))
+
 
 temp_tibble1 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")) %>%
   hyper_tibble() %>% 
