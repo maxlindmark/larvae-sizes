@@ -385,14 +385,14 @@ d <- extractCovariateAtLocation(
   d, # A df containing the set locations to be evaluated.
   dep_raster, 
   changesYearly = 0, 
-  nametocov = "depth",
+  nametocov = "depth2",
   messages = 1 
 )
 
 # The depth data is shifted towards the Baltic, leading to non assignment of depths. 
 plot_map +
    geom_point(data = d,
-              aes(X*1000, Y*1000, color = depth))
+              aes(X*1000, Y*1000, color = depth2))
 
 
 ## +++++++++++++++++++++++++++++++++++++++++++++++++
@@ -403,8 +403,18 @@ plot_map +
 ## Obtain depth at locations. 
 d <- cbind(
   d,
-  get.depth(depth_box, x=d$lon, y=d$lat, locator=F)
+  get.depth(depth_box, x=d$lon, y=d$lat, locator=F)["depth"]
 )
+
+## Convert to strictly positive values. 
+d$depth <- d$depth*(-1)
+
+d
+# Check
+plot_map +
+   geom_point(data = d,
+              aes(X*1000, Y*1000, color = depth))
+
 
 ```
 
