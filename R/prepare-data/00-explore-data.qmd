@@ -35,16 +35,18 @@ library(terra)
 library(viridis)
 library(devtools)
 library(ggsidekick); theme_set(theme_sleek())
+library(crayon)
 
 # Point to wd 
 home <- here::here()
 
 # Load all custom functions in R/function
 # - map-plot [source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")]
-for(fun in list.files("/R/functions")){
-  source(paste("/R/functions", fun, sep = "/"))
-}
+# - callCopernicusCovariate
 
+for(fun in list.files(paste0(home, "/R/functions"))){
+  source(paste(home, "R/functions", fun, sep = "/"))
+}
 
 ```
 
@@ -260,109 +262,14 @@ covPath <- paste0(home, "/data/covariates")
 ### Satelite derived temperatures
 
 ```{r}
-# https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
-
+## Load satellite derived SST.
+# Source: https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
+# Print details
 print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc", sep = "/")))
 
+# Load and gather the temperature data in a tibble
+temp_tibble <- callCopernicusCovariate("sst", messages = 1) 
 
-temp_tibble1 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble2 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802082358.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble3 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802166794.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble4 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802239078.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble5 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802304331.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble6 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802375462.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble7 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802434416.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble8 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802668854.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble <- bind_rows(temp_tibble1,
-                         temp_tibble2,
-                         temp_tibble3,
-                         temp_tibble4,
-                         temp_tibble5,
-                         temp_tibble6,
-                         temp_tibble7,
-                         temp_tibble8)
-
-# FIXME: Make this a function instead...
 ```
 
 ```{r}
