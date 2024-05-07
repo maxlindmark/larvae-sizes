@@ -36,6 +36,7 @@ library(viridis)
 library(devtools)
 library(ggsidekick); theme_set(theme_sleek())
 library(crayon)
+library(marmap)
 
 # Point to wd 
 home <- here::here()
@@ -258,7 +259,7 @@ covPath <- paste0(home, "/data/covariates")
 
 ```
 
-### Satelite derived temperatures
+### Satellite derived temperatures
 https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
 
 
@@ -296,13 +297,14 @@ d <- extractCovariateAtLocation(
   "sst", # Name of the covariate to extract. One of: sst, chlorophyll, depth. 
   d, # A df containing the set of yearand locations to be evaluated.
   temp_tibble,  # A df containing the covariate at location
+  changesYearly = 1, # Is the covariate time variant (e.g. temp) or not (e.g. depth) 
   "temp",# Name to give to the covariate evaluated at location in the df
   messages = 1 # dichotomous
 )
 
 ```
 
-### Satelite derived chlorophyll abundance
+### Satellite derived chlorophyll abundance
 https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
 
 ```{r}
@@ -336,17 +338,85 @@ d <- d %>%
 
 # Loop through all year combos, extract the temperatures at the data locations
 d <- extractCovariateAtLocation(
-  "chl", # Name of the covariate to extract. One of: sst, chlorophyll, depth. 
-  d, # A df containing the set of yearand locations to be evaluated.
-  temp_tibble,  # A df containing the covariate at location
-  "chl",# Name to give to the covariate evaluated at location in the df
-  messages = 1 # dichotomous
+  "chl", 
+  d, 
+  chl_tibble,  
+  changesYearly = 1, 
+  "chl",
+  messages = 1 
 )
 
 ```
 
 
+### Satellite derived depth
+https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
 
+```{r}
+## Load satellite derived depth
+# Source: https://emodnet.ec.europa.eu/geoviewer
+# Print details
+print(nc_open(paste(covPath, "depth", "Mean depth natural colour (with land).nc", sep = "/")))
+
+# Load depth data 
+dep_raster <- terra::rast(paste0(home, "/data/covariates/depth/Mean depth natural colour (with land).nc"))
+
+# See depth extension
+plot(dep_raster)
+
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+## The raster is shifted to the Baltic and excludes 
+## some of our points. let´s get depth another way. 
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+
+## Generate a depth box containing the bathymetries. 
+depth_box <- getNOAA.bathy(min(d$lon) - .1, max(d$lon) + .1, min(d$lat)  - .1, max(d$lat) + .1)
+
+```
+
+```{r, eval = F}
+
+# Visualize depth frequency distribution
+hist(dep_raster)
+
+# Extract depth at locations
+d <- extractCovariateAtLocation(
+  "elevation", # Name of the covariate to extract. One of: sst, chlorophyll, elevation 
+  d, # A df containing the set locations to be evaluated.
+  dep_raster, 
+  changesYearly = 0, 
+  nametocov = "depth",
+  messages = 1 
+)
+
+# The depth data is shifted towards the Baltic, leading to non assignment of depths. 
+plot_map +
+   geom_point(data = d,
+              aes(X*1000, Y*1000, color = depth))
+
+
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+## The raster is shifted to the Baltic and excludes 
+## some of our points. let´s get depth another way. 
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+
+## Obtain depth at locations. 
+d <- cbind(
+  d,
+  get.depth(depth_box, x=d$lon, y=d$lat, locator=F)
+)
+
+```
+
+
+## Check covariates 
+
+```{r}
+
+# Get the proportion of observations not assigned with a covariate value at prior steps
+colMeans(is.na(d))
+
+```
 
 ## Plot response variables
 
@@ -380,6 +450,22 @@ ggplot(d, aes(temp, length_mm)) +
   geom_smooth(method = "lm") +
   #geom_smooth() +
   facet_wrap(~species, scales = "free")
+
+# Effect of chlorophyll
+ggplot(d, aes(chl, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  #geom_smooth() +
+  facet_wrap(~species, scales = "free")
+
+# Effect of depth
+ggplot(d, aes(depth, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  #geom_smooth() +
+  facet_wrap(~species, scales = "free")
+
+
 ```
 
 ## Save data
