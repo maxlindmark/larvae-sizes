@@ -332,7 +332,7 @@ hist(chl_tibble$chl)
 # Obtain temporal availability, this will be the temporal window to filter the data 
 sort(unique(chl_tibble$year))
 
-# Trim years we have temperature for (again, annoying! Fix the temperatures later)
+# Trim years we have chlorophyll for. 
 d <- d %>% 
   filter(year %in% unique(chl_tibble$year)) # We loose 13% of the data by including chl. 
 
@@ -397,7 +397,8 @@ plot_map +
 
 ## +++++++++++++++++++++++++++++++++++++++++++++++++
 ## The raster is shifted to the Baltic and excludes 
-## some of our points. let´s get depth another way. 
+## some of our points. let´s get depth another way.
+## i.e. using marmap (thus NOAA) source. 
 ## +++++++++++++++++++++++++++++++++++++++++++++++++
 
 ## Obtain depth at locations. 
@@ -409,7 +410,6 @@ d <- cbind(
 ## Convert to strictly positive values. 
 d$depth <- d$depth*(-1)
 
-d
 # Check
 plot_map +
    geom_point(data = d,
@@ -468,7 +468,14 @@ ggplot(d, aes(chl, length_mm)) +
   #geom_smooth() +
   facet_wrap(~species, scales = "free")
 
-# Effect of depth
+# Effect of depth [source: Copernicus]
+ggplot(d, aes(depth2, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  #geom_smooth() +
+  facet_wrap(~species, scales = "free")
+
+# Effect of depth [source: NOAA] 
 ggplot(d, aes(depth, length_mm)) + 
   geom_point(size = 0.4, alpha = 0.4) +  
   geom_smooth(method = "lm") +
@@ -484,5 +491,6 @@ ggplot(d, aes(depth, length_mm)) +
 d <- d %>% drop_na(temp)
 
 write_csv(d, paste0(home, "/data/clean/larval_size.csv"))
+
 ```
 
