@@ -250,7 +250,6 @@ summary(d$year)
 
 ## Add covariate to hauls
 
-https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
 
 ```{r}
 
@@ -260,6 +259,8 @@ covPath <- paste0(home, "/data/covariates")
 ```
 
 ### Satelite derived temperatures
+https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
+
 
 ```{r}
 ## Load satellite derived SST.
@@ -270,48 +271,35 @@ print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_171
 # Load and gather the temperature data in a tibble
 temp_tibble <- callCopernicusCovariate("sst", messages = 1) 
 
+
 ```
 
 ```{r}
+
+# Visualize temperature frequency distribution
 hist(temp_tibble$sst)
 
-unique(temp_tibble$year)
-
+# Visualize temperature spatial distribution
 # plot_map +
 #   geom_point(data = temp_tibble,
 #              aes(X*1000, Y*1000, color = sst))
 
-# Loop through all year combos, extract the temperatures at the data locations
-
-# Loop, make raster and extract
-temp_list <- list()
+# Obtain temporal availability, this will be the temporal window to filter the data 
+unique(temp_tibble$year)
 
 # Trim years we have temperature for (again, annoying! Fix the temperatures later)
 d <- d %>% 
   filter(year %in% unique(temp_tibble$year))
 
-for(i in unique(d$year)) {
-  
-  d_sub <- filter(d, year == i)
-  temp_tibble_sub <- filter(temp_tibble, year == i)
-  
-  # Convert to raster
-  temp_raster <- as_spatraster(temp_tibble_sub, xycols = 2:3,
-                               crs = "WGS84", digits = 2)
+# Loop through all year combos, extract the temperatures at the data locations
+d <- extractCovariateAtLocation(
+  "sst", # Name of the covariate to extract. One of: sst, chlorophyll, depth. 
+  d, # A df containing the set of yearand locations to be evaluated.
+  temp_tibble,  # A df containing the covariate at location
+  "temp",# Name to give to the covariate evaluated at location in the df
+  messages = 1 # dichotomous
+)
 
-  ggplot() +
-    geom_spatraster(data = temp_raster$sst, aes(fill = sst))
-
-  # Extract from raster
-  d_sub$temp <- terra::extract(temp_raster$sst,
-                               d_sub %>% dplyr::select(lon, lat))$sst  
-    
-  # Save
-  temp_list[[i]] <- d_sub
-  
-}
-
-d <- bind_rows(temp_list)
 ```
 
 Plot response variables
