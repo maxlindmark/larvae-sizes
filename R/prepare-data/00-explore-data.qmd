@@ -336,7 +336,7 @@ sort(unique(chl_tibble$year))
 d <- d %>% 
   filter(year %in% unique(chl_tibble$year)) # We loose 13% of the data by including chl. 
 
-# Loop through all year combos, extract the temperatures at the data locations
+# Loop through all year combos, extract the chl at the data locations
 d <- extractCovariateAtLocation(
   "chl", 
   d, 
