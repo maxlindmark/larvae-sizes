@@ -32,7 +32,7 @@
 callCopernicusCovariate <- function(
   covariate, # One of: sst, chl, depth
   path, # path to covariates
-  messages = 1 # dicotomous
+  messages = 1 # dichotomous
 ){
   # Make specification of path possible
   if(missing(path)){
