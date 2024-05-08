@@ -467,7 +467,7 @@ Go with model X, spatiotemporal IID
 
 ```{r}
 
-mod <- m1 # Paste here selected model
+mod <- m2 # Paste here selected model
 
 ```
 
@@ -495,8 +495,8 @@ mod <- m1 # Paste here selected model
 
 # Residuals -- above doesn't work yet with gengamma!
 png(file = paste0(home, "/figures/qq.png"), units = "cm", width = 15, height = 15, res = 300)
-simulate(m2, nsim = 300, type = 'mle-mvn') %>%
-  dharma_residuals(m2)
+simulate(mod, nsim = 300, type = 'mle-mvn') %>%
+  dharma_residuals(mod)
 dev.off()
 ```
 
