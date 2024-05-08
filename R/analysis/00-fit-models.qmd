@@ -41,12 +41,18 @@ Read data and prediction grid, scales variables
 #| message: false
 # Read data
 d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv")) %>% 
-  drop_na(temp) %>% 
-  mutate(temp_sc = (temp - mean(temp, na.rm = TRUE)) / sd(temp, na.rm = TRUE),
-         yday_ct = yday - mean(yday),
-         year_f = as.factor(year),
-         species_f = as.factor(species),
-         year_ct = year - median(year))
+  drop_na(temp) %>%
+  drop_na(chl) %>%
+  drop_na(depth) %>%
+  mutate(
+    temp_sc = (temp - mean(temp, na.rm = TRUE)) / sd(temp, na.rm = TRUE),
+    chl_sc = (chl - mean(chl, na.rm = TRUE)) / sd(chl, na.rm = TRUE),
+    depth_sc = (depth - mean(depth, na.rm = TRUE)) / sd(depth, na.rm = TRUE),
+    yday_ct = yday - mean(yday),
+    year_f = as.factor(year),
+    species_f = as.factor(species),
+    year_ct = year - median(year)
+    )
 
 # Trim some outliers
 d %>% 
