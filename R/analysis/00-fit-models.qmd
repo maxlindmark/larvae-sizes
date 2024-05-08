@@ -125,23 +125,16 @@ pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) %>%
   mutate(keep = ifelse(lon < 10 & lat < 57.15, "N", "Y")) %>% 
   filter(keep == "Y") %>% dplyr::select(-keep)
 
-# Plot temperature in space
-p2 <- plot_map + 
-  geom_raster(data = pred_grid %>% 
-                group_by(X, Y) %>% 
-                summarise(mean_temp = mean(temp)),
-              aes(X*1000, Y*1000, fill = mean_temp)) + 
-  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
-             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") +
-  scale_fill_viridis(option = "magma", name = "Temperature (°C)") + 
+## Plot covariates in space
+# First gather the elements common to all the covariate plots
+covMapTheme <- plot_map + 
   theme(legend.position.inside = c(0.25, 0.12),
         legend.direction = "horizontal",
-        legend.key.width = unit(0.5, "cm"),
+        legend.key.width = unit(0.25, "cm"), # Decreased to fit multicovariates
         legend.key.height = unit(0.2, "cm"),
         legend.text = element_text(size = 6),
         legend.title = element_text(size = 8),
         plot.tag = element_text()) +
-  labs(tag = "a)") +
   guides(fill = guide_colorbar(position = "inside",
                                title.position = "top",
                                title.hjust = 0.5)) + 
@@ -160,8 +153,49 @@ p2 <- plot_map +
                            fill = c("grey40", "white"),
                            line_col = "grey20"))
 
-p2 + p1
+# Generate the covariate maps. 
+p_tempCovMap <- covMapTheme +
+  geom_raster(data = pred_grid %>% 
+                group_by(X, Y) %>% 
+                summarise(mean_temp = mean(temp)),
+              aes(X*1000, Y*1000, fill = mean_temp)) + 
+  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
+             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") + 
+  labs(tag = "a)") + 
+  scale_fill_viridis(option = "magma", name = "Temperature (°C)") 
 
+p_chlCovMap <- covMapTheme +
+  geom_raster(data = pred_grid %>% 
+                group_by(X, Y) %>% 
+                summarise(mean_chl = mean(chl)),
+              aes(X*1000, Y*1000, fill = mean_chl)) +
+  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
+             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") + 
+  labs(tag = "a)") + 
+  scale_fill_viridis(option = "viridis", name = "Chl (mg/l^3)") 
+
+p_depthCovMap <- covMapTheme +
+  geom_raster(data = pred_grid,
+              aes(X*1000, Y*1000, fill = depth)) + 
+  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
+             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") + 
+  labs(tag = "a)") + 
+  geom_contour(data = pred_grid, 
+               aes(X*1000, Y*1000, z = depth), 
+               color = "grey75", binwidth = 100, size = 0.1) +
+  scale_fill_gradient(
+  low = "#079dfa",
+  high = "#132B43"
+  )
+
+
+# Display (togheter with length distribution by species) 
+p_tempCovMap+
+p_chlCovMap+
+p_depthCovMap+
+p1
+
+# Save
 ggsave(paste0(home, "/figures/data_map.pdf"), width = 25, height = 12, units = "cm")
 
 # To load entire cache in interactive r session, do: 
