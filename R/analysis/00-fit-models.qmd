@@ -194,10 +194,9 @@ p_depthCovMap <- covMapTheme +
   )
 
 # Display (togheter with length distribution by species) 
-p_tempCovMap+
-p_chlCovMap+
-p_depthCovMap+
-p1
+# FIXME: clean up this plot once we decide on the layout (collect axies, trim to show a specific year etc)
+p_tempCovMap + p_chlCovMap + p_depthCovMap + p1 +
+  plot_layout(axes = "collect")
 
 # Save
 ggsave(paste0(home, "/figures/data_map.pdf"), width = 25, height = 12, units = "cm")
@@ -211,42 +210,40 @@ ggsave(paste0(home, "/figures/data_map.pdf"), width = 25, height = 12, units = "
 test models
 
 ```{r}
-# Basic model
-
-# These had very low spatial sigma, omit these and see if warnings dissapear?
-d2 <- d #%>%
-  #filter(!species %in% c("Aphia minuta", "Taurulus bubalis", "Argentina silus"))
-
-mesh <- make_mesh(d2,
-                  xy_cols = c("X", "Y"),
-                  cutoff = 8)
-
-mt <- sdmTMB(
-  #length_mm ~ 0 + species + temp_sc + year_ct + yday_ct,
-  length_mm ~ temp_sc*species_f + yday_ct, #+ year_ct*species_f,
-  data = d2,
-  mesh = mesh,
-  family = gengamma(link = "log"),
-  spatiotemporal = "off",
-  spatial = "off",
-  spatial_varying = ~0 + species_f,
-  time = "year")
-
-sanity(mt)
-mt
-
-t <- tidy(mt, effects = "ran_pars") %>% 
-  filter(!term %in% c("range", "phi"))
-
-# How many sigmas below 0.01?
-# Eeeem,, only 2/20 species have sigmas that are somewhat big?
-t %>% filter(estimate < 0.01)
-
-t %>% as.data.frame()
-
-tidy(mt) %>% filter(!term %in% c("(Intercept)", "temp_sc")) %>% as.data.frame()
-
-
+# # Basic model
+# 
+# # These had very low spatial sigma, omit these and see if warnings dissapear?
+# d2 <- d #%>%
+#   #filter(!species %in% c("Aphia minuta", "Taurulus bubalis", "Argentina silus"))
+# 
+# mesh <- make_mesh(d2,
+#                   xy_cols = c("X", "Y"),
+#                   cutoff = 8)
+# 
+# mt <- sdmTMB(
+#   #length_mm ~ 0 + species + temp_sc + year_ct + yday_ct,
+#   length_mm ~ temp_sc*species_f + yday_ct, #+ year_ct*species_f,
+#   data = d2,
+#   mesh = mesh,
+#   family = gengamma(link = "log"),
+#   spatiotemporal = "off",
+#   spatial = "off",
+#   spatial_varying = ~0 + species_f,
+#   time = "year")
+# 
+# sanity(mt)
+# mt
+# 
+# t <- tidy(mt, effects = "ran_pars") %>% 
+#   filter(!term %in% c("range", "phi"))
+# 
+# # How many sigmas below 0.01?
+# # Eeeem,, only 2/20 species have sigmas that are somewhat big?
+# t %>% filter(estimate < 0.01)
+# 
+# t %>% as.data.frame()
+# 
+# tidy(mt) %>% filter(!term %in% c("(Intercept)", "temp_sc")) %>% as.data.frame()
 
 # 1                       species_fAmmodytidae  1.348078369 0.0590645757
 # 2                 species_fAnguilla anguilla  2.050789596 0.0207020004
@@ -267,32 +264,30 @@ tidy(mt) %>% filter(!term %in% c("(Intercept)", "temp_sc")) %>% as.data.frame()
 # 17                species_fSprattus sprattus  1.622430985 0.0674224960
 # 18           species_fSyngnathus rostellatus  1.959851355 0.0219943069
 # 19                 species_fTaurulus bubalis -0.199119903 0.0455757648
-
-pred_grid_t <- pred_grid %>%
-  select(-chl) %>% # Avoid the columns that were added (depth was already there?), 
-                   # since indexing is used below.
-  filter(year == max(year)) %>% 
-  crossing(species_f = unique(d$species_f))
-
-pred_t <- predict(mt, newdata = pred_grid_t)
-
-pred_t <- pred_t %>% 
-  pivot_longer(c(17:36),
-  names_to = "species2", values_to = "omega_s2")
-
-# Spatial random
-names(pred_t)
-
-plot_map +
-  geom_raster(data = pred_t,
-              aes(X*1000, Y*1000, fill = omega_s2)) +
-  scale_fill_gradient2(name = "Spatial random effect") +
-  facet_wrap(~species2) +
-  #geom_sf() + 
-  NULL
-
-sanity(mt)
-
+# pred_grid_t <- pred_grid %>%
+#   select(-chl) %>% # Avoid the columns that were added (depth was already there?), 
+#                    # since indexing is used below.
+#   filter(year == max(year)) %>% 
+#   crossing(species_f = unique(d$species_f))
+# 
+# pred_t <- predict(mt, newdata = pred_grid_t)
+# 
+# pred_t <- pred_t %>% 
+#   pivot_longer(c(17:36),
+#   names_to = "species2", values_to = "omega_s2")
+# 
+# # Spatial random
+# names(pred_t)
+# 
+# plot_map +
+#   geom_raster(data = pred_t,
+#               aes(X*1000, Y*1000, fill = omega_s2)) +
+#   scale_fill_gradient2(name = "Spatial random effect") +
+#   facet_wrap(~species2) +
+#   #geom_sf() + 
+#   NULL
+# 
+# sanity(mt)
 ```
 
 ```{r fit models}

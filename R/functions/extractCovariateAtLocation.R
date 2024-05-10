@@ -27,12 +27,12 @@
 #+ 
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
 extractCovariateAtLocation <- function(
-  covariate,  # Covariate to evaluate. Usually one of: sst, chlorophyll, elevation. Depends on input data.
-  locations_data, # A df containing the set of year ("year") and locations ("lon", "lat") to be evaluated.
-  covariate_data,  # A df containing the covariate at location
+  covariate,              # Covariate to evaluate. Usually one of: sst, chlorophyll, elevation. Depends on input data.
+  locations_data,         # A df containing the set of year ("year") and locations ("lon", "lat") to be evaluated.
+  covariate_data,         # A df containing the covariate at location
   changesYearly = c(0,1), # dichotomous
-  nametocov, # A string indicating how to rename the covariate
-  messages = c(0,1) # dichotomous
+  nametocov,              # A string indicating how to rename the covariate
+  messages = c(0,1)       # dichotomous
 ){
   
   if(changesYearly == 0){

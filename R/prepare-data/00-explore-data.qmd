@@ -246,22 +246,17 @@ plot_map_fc +
 
 # FIXME: Crystallugobius not a larvate, right?
 summary(d$year)
-
 ```
 
 ## Add covariate to hauls
 
-
 ```{r}
-
 # Specify covariates path for simplicity
 covPath <- paste0(home, "/data/covariates")
-
 ```
 
 ### Satellite derived temperatures
 https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
-
 
 ```{r}
 ## Load satellite derived SST.
@@ -271,12 +266,9 @@ print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_171
 
 # Load and gather the temperature data in a tibble
 temp_tibble <- callCopernicusCovariate("sst", messages = 1) 
-
-
 ```
 
 ```{r}
-
 # Visualize temperature frequency distribution
 hist(temp_tibble$sst)
 
@@ -301,7 +293,6 @@ d <- extractCovariateAtLocation(
   "temp",# Name to give to the covariate evaluated at location in the df
   messages = 1 # dichotomous
 )
-
 ```
 
 ### Satellite derived chlorophyll abundance
@@ -315,12 +306,9 @@ print(nc_open(paste(covPath, "chlorophyll", "cmems_mod_glo_bgc_my_0.25_P1D-m_171
 
 # Load and gather the temperature data in a tibble
 chl_tibble <- callCopernicusCovariate("chlorophyll", messages = 1) 
-
-
 ```
 
 ```{r}
-
 # Visualize chlorophyll frequency distribution
 hist(chl_tibble$chl)
 
@@ -345,9 +333,7 @@ d <- extractCovariateAtLocation(
   "chl",
   messages = 1 
 )
-
 ```
-
 
 ### Satellite derived depth
 https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
@@ -371,11 +357,9 @@ plot(dep_raster)
 
 ## Generate a depth box containing the bathymetries. 
 depth_box <- getNOAA.bathy(min(d$lon) - .1, max(d$lon) + .1, min(d$lat)  - .1, max(d$lat) + .1)
-
 ```
 
 ```{r, eval = F}
-
 # Visualize depth frequency distribution
 hist(dep_raster)
 
@@ -393,7 +377,6 @@ d <- extractCovariateAtLocation(
 plot_map +
    geom_point(data = d,
               aes(X*1000, Y*1000, color = depth2))
-
 
 ## +++++++++++++++++++++++++++++++++++++++++++++++++
 ## The raster is shifted to the Baltic and excludes 
@@ -414,18 +397,13 @@ d$depth <- d$depth*(-1)
 plot_map +
    geom_point(data = d,
               aes(X*1000, Y*1000, color = depth))
-
-
 ```
-
 
 ## Check covariates 
 
 ```{r}
-
 # Get the proportion of observations not assigned with a covariate value at prior steps
 colMeans(is.na(d))
-
 ```
 
 ## Plot response variables
@@ -481,8 +459,6 @@ ggplot(d, aes(depth, length_mm)) +
   geom_smooth(method = "lm") +
   #geom_smooth() +
   facet_wrap(~species, scales = "free")
-
-
 ```
 
 ## Save data
@@ -491,6 +467,5 @@ ggplot(d, aes(depth, length_mm)) +
 d <- d %>% drop_na(temp)
 
 write_csv(d, paste0(home, "/data/clean/larval_size.csv"))
-
 ```
 
