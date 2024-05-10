@@ -41,12 +41,18 @@ Read data and prediction grid, scales variables
 #| message: false
 # Read data
 d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv")) %>% 
-  drop_na(temp) %>% 
-  mutate(temp_sc = (temp - mean(temp, na.rm = TRUE)) / sd(temp, na.rm = TRUE),
-         yday_ct = yday - mean(yday),
-         year_f = as.factor(year),
-         species_f = as.factor(species),
-         year_ct = year - median(year))
+  drop_na(temp) %>%
+  drop_na(chl) %>%
+  drop_na(depth) %>%
+  mutate(
+    temp_sc = (temp - mean(temp, na.rm = TRUE)) / sd(temp, na.rm = TRUE),
+    chl_sc = (chl - mean(chl, na.rm = TRUE)) / sd(chl, na.rm = TRUE),
+    depth_sc = (depth - mean(depth, na.rm = TRUE)) / sd(depth, na.rm = TRUE),
+    yday_ct = yday - mean(yday),
+    year_f = as.factor(year),
+    species_f = as.factor(species),
+    year_ct = year - median(year)
+    )
 
 # Trim some outliers
 d %>% 
@@ -111,31 +117,29 @@ p1 <- ggplot(d, aes(length_mm, fill = species)) +
 # Load prediction grid
 pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) %>% 
   drop_na(temp) %>% 
+  drop_na(chl) %>%
   filter(year %in% unique(d$year)) %>% 
-  mutate(temp_sc = (temp - mean(d$temp, na.rm = TRUE)) / sd(d$temp, na.rm = TRUE),
-         year_f = as.factor(year),
-         year_ct = 0,
-         yday_ct = 0) %>% 
+  mutate(
+    temp_sc = (temp - mean(d$temp, na.rm = TRUE)) / sd(d$temp, na.rm = TRUE),
+    chl_sc = (chl - mean(chl, na.rm = TRUE)) / sd(chl, na.rm = TRUE),
+    depth_sc = (depth - mean(depth, na.rm = TRUE)) / sd(depth, na.rm = TRUE),
+    year_f = as.factor(year),
+    year_ct = 0,
+    yday_ct = 0
+    ) %>% 
   mutate(keep = ifelse(lon < 10 & lat < 57.15, "N", "Y")) %>% 
   filter(keep == "Y") %>% dplyr::select(-keep)
 
-# Plot temperature in space
-p2 <- plot_map + 
-  geom_raster(data = pred_grid %>% 
-                group_by(X, Y) %>% 
-                summarise(mean_temp = mean(temp)),
-              aes(X*1000, Y*1000, fill = mean_temp)) + 
-  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
-             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") +
-  scale_fill_viridis(option = "magma", name = "Temperature (°C)") + 
+## Plot covariates in space
+# First gather the elements common to all the covariate plots
+covMapTheme <- plot_map + 
   theme(legend.position.inside = c(0.25, 0.12),
         legend.direction = "horizontal",
-        legend.key.width = unit(0.5, "cm"),
+        legend.key.width = unit(0.25, "cm"), # Decreased to fit multicovariates
         legend.key.height = unit(0.2, "cm"),
         legend.text = element_text(size = 6),
         legend.title = element_text(size = 8),
         plot.tag = element_text()) +
-  labs(tag = "a)") +
   guides(fill = guide_colorbar(position = "inside",
                                title.position = "top",
                                title.hjust = 0.5)) + 
@@ -154,8 +158,48 @@ p2 <- plot_map +
                            fill = c("grey40", "white"),
                            line_col = "grey20"))
 
-p2 + p1
+# Generate the covariate maps. 
+p_tempCovMap <- covMapTheme +
+  geom_raster(data = pred_grid %>% 
+                group_by(X, Y) %>% 
+                summarise(mean_temp = mean(temp)),
+              aes(X*1000, Y*1000, fill = mean_temp)) + 
+  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
+             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") + 
+  labs(tag = "a)") + 
+  scale_fill_viridis(option = "magma", name = "Temperature (°C)") 
 
+p_chlCovMap <- covMapTheme +
+  geom_raster(data = pred_grid %>% 
+                group_by(X, Y) %>% 
+                summarise(mean_chl = mean(chl)),
+              aes(X*1000, Y*1000, fill = mean_chl)) +
+  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
+             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") + 
+  labs(tag = "a)") + 
+  scale_fill_viridis(option = "viridis", name = "Chl (mg/l^3)") 
+
+p_depthCovMap <- covMapTheme +
+  geom_raster(data = pred_grid,
+              aes(X*1000, Y*1000, fill = depth)) + 
+  geom_point(data = d %>% distinct(X, Y), aes(X*1000, Y*1000),
+             size = 0.5, alpha = 0.3, shape = 21, fill = NA, color = "white") + 
+  labs(tag = "a)") + 
+  geom_contour(data = pred_grid, 
+               aes(X*1000, Y*1000, z = depth), 
+               color = "grey75", binwidth = 100, size = 0.1) +
+  scale_fill_gradient(
+  low = "#079dfa",
+  high = "#132B43"
+  )
+
+# Display (togheter with length distribution by species) 
+p_tempCovMap+
+p_chlCovMap+
+p_depthCovMap+
+p1
+
+# Save
 ggsave(paste0(home, "/figures/data_map.pdf"), width = 25, height = 12, units = "cm")
 
 # To load entire cache in interactive r session, do: 
@@ -225,18 +269,19 @@ tidy(mt) %>% filter(!term %in% c("(Intercept)", "temp_sc")) %>% as.data.frame()
 # 19                 species_fTaurulus bubalis -0.199119903 0.0455757648
 
 pred_grid_t <- pred_grid %>%
+  select(-chl) %>% # Avoid the columns that were added (depth was already there?), 
+                   # since indexing is used below.
   filter(year == max(year)) %>% 
   crossing(species_f = unique(d$species_f))
 
 pred_t <- predict(mt, newdata = pred_grid_t)
 
 pred_t <- pred_t %>% 
-  pivot_longer(c(17:36), names_to = "species2", values_to = "omega_s2")
+  pivot_longer(c(17:36),
+  names_to = "species2", values_to = "omega_s2")
 
 # Spatial random
 names(pred_t)
-
-ggplot(aes())
 
 plot_map +
   geom_raster(data = pred_t,
@@ -288,6 +333,47 @@ m1 <- sdmTMB(
 
 sanity(m1)
 m1
+
+# + Depth with IID ST fields
+m2 <- sdmTMB(
+  length_mm ~ temp_sc*species + depth_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year")
+
+sanity(m2)
+m2
+
+# + Chl with IID ST fields
+m3 <- sdmTMB(
+  length_mm ~ temp_sc*species + chl_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year")
+
+sanity(m3)
+m3
+
+# + Depth and + Chl with IID ST fields
+m4 <- sdmTMB(
+  length_mm ~ temp_sc*species + depth_sc*species + chl_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year")
+
+sanity(m4)
+m4
+
+
 ```
 
 ### Cross validation
@@ -332,12 +418,81 @@ m1_cv <- sdmTMB_cv(
   k_folds = length(unique(clust))
 )
 
+m2_cv <- sdmTMB_cv(
+  length_mm ~ temp_sc*species + depth_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year",
+  fold_ids = clust,
+  k_folds = length(unique(clust))
+)
+
+m3_cv <- sdmTMB_cv(
+  length_mm ~ temp_sc*species + chl_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year",
+  fold_ids = clust,
+  k_folds = length(unique(clust))
+)
+
+m4_cv <- sdmTMB_cv(
+  length_mm ~ temp_sc*species  + depth_sc*species + chl_sc*species + year_ct*species + yday_ct,
+  data = d,
+  mesh = mesh,
+  family = gengamma(link = "log"),
+  spatiotemporal = "IID",
+  spatial = "on",
+  time = "year",
+  fold_ids = clust,
+  k_folds = length(unique(clust))
+)
+
 # Compare log-likelihoods -- higher is better!
-m0_cv$sum_loglik
-m1_cv$sum_loglik
+diagnostic <- data.frame(
+  modelName = c(
+   "m0",
+   "m1",
+   "m2",
+   "m3",
+   "m4"
+    ),
+  modelCall = c(
+    "length_mm ~ temp_sc*species + year_ct*species + yday_ct", 
+    "length_mm ~ temp_sc*species + year_ct*species + yday_ct with ST IID", 
+    "length_mm ~ temp_sc*species + depth_sc*species + year_ct*species + yday_ct  with ST IID", 
+    "length_mm ~ temp_sc*species + chl_sc*species + year_ct*species + yday_ct  with ST IID", 
+    "length_mm ~ temp_sc*species  + depth_sc*species + chl_sc*species + year_ct*species + yday_ct  with ST IID"
+  ), 
+  loglink = c(
+    m0_cv$sum_loglik,
+    m1_cv$sum_loglik,
+    m2_cv$sum_loglik,
+    m3_cv$sum_loglik,
+    m4_cv$sum_loglik
+  )
+) %>% 
+  arrange(
+    -loglink
+  )
+
+diagnostic[c(1,3)]
+
 ```
 
-Go with model 1, spatiotemporal IID
+Go with model 3, spatiotemporal IID
+
+```{r}
+
+mod <- m3 # Paste here selected model
+
+```
 
 ### Plot residuals 
 
@@ -363,8 +518,8 @@ Go with model 1, spatiotemporal IID
 
 # Residuals -- above doesn't work yet with gengamma!
 png(file = paste0(home, "/figures/qq.png"), units = "cm", width = 15, height = 15, res = 300)
-simulate(m1, nsim = 300, type = 'mle-mvn') %>%
-  dharma_residuals(m1)
+simulate(mod, nsim = 300, type = 'mle-mvn') %>%
+  dharma_residuals(mod)
 dev.off()
 ```
 
@@ -374,8 +529,7 @@ dev.off()
 #| message: false
 #| warning: false
 
-pred <- predict(m1, newdata = pred_grid %>%
-                  mutate(species = "Clupea harengus")) # The ST and S random fields do not change with species
+pred <- predict(mod, newdata = pred_grid %>%  mutate(species = "Clupea harengus")) # The ST and S random fields do not change with species
 
 # Spatial random
 plot_map +
@@ -418,15 +572,18 @@ plot_map_fc +
         legend.key.width = unit(0.2, "cm"),
         legend.key.height = unit(0.3, "cm"),
         legend.title = element_text(size = 6)) +
-  guides(fill = guide_colorbar(position = "inside",
-                               title.position = "top",
-                               title.hjust = 1)) + 
+  guides(fill = guide_colorbar(
+    position = "bottom", 
+    title.position = "top",
+    direction = "horizontal",
+    title.hjust = 1, 
+    theme = theme(legend.key.width  = unit(3, "cm")))) + 
   geom_sf()
 
 ggsave(paste0(home, "/figures/st_pred.pdf"), width = 17, height = 7, units = "cm")
 
 # Plot uncertainty
-sim <- predict(m1, nsim = 100, 
+sim <- predict(mod, nsim = 100, 
                newdata = pred_grid %>%
                  mutate(species = "Clupea harengus"))
 
@@ -460,18 +617,21 @@ ggsave(paste0(home, "/figures/spatial_cv.pdf"), width = 11, height = 11, units =
 #| message: false
 #| warning: false
 
-tidy(m1) %>% as.data.frame()
+
+tidy(mod) %>% as.data.frame()
 
 sort(unique(d$species))
 
-mean_coefs <- tidy(m1, conf.int = TRUE) %>%
-  filter(term %in% c("temp_sc", "yday_ct")) %>% 
+
+mean_coefs <- tidy(mod, conf.int = TRUE) %>%
+  filter(term %in% c("temp_sc", "year_ct", "depth_sc",  "chl_sc")) %>% 
   mutate(term = ifelse(term == "temp_sc",
                        "temp_sc:speciesAgonus cataphractus",
-                       "speciesAgonus cataphractus:year_ct"))
-
+                       paste0("speciesAgonus cataphractus:", term))
+  )
+  
 # Wrangle data
-coefs_temp <- tidy(m1, conf.int = TRUE) %>%
+coefs_temp <- tidy(mod, conf.int = TRUE) %>%
   filter(grepl("temp_sc:", term)) %>% 
   bind_rows(mean_coefs %>% filter(term == "temp_sc:speciesAgonus cataphractus")) %>% 
   mutate(estimate2 = mean_coefs %>%
@@ -488,8 +648,43 @@ coefs_temp <- tidy(m1, conf.int = TRUE) %>%
   mutate(species = str_remove(term, "temp_sc:"),
          species = str_remove(species, "species"))
 
+## Depth excluded due to insignificant effect across species and not present in the best performing parametrization. 
+# coefs_depth <- tidy(mod, conf.int = TRUE) %>%
+#   filter(grepl(":depth_sc", term)) %>% 
+#   bind_rows(mean_coefs %>% filter(term == "speciesAgonus cataphractus:depth_sc")) %>% 
+#   mutate(estimate2 = mean_coefs %>%
+#            filter(term == "speciesAgonus cataphractus:depth_sc") %>%
+#            pull(estimate) + estimate,
+#          
+#          conf.low2 = mean_coefs %>%
+#            filter(term == "speciesAgonus cataphractus:depth_sc") %>%
+#            pull(conf.low) + conf.low,
+#          
+#          conf.high2 = mean_coefs %>%
+#            filter(term == "speciesAgonus cataphractus:depth_sc") %>%
+#            pull(conf.high) + conf.high) %>% 
+#   mutate(species = str_remove(term, ":depth_sc"),
+#          species = str_remove(species, "species"))
 
-coefs_year <- tidy(m1, conf.int = TRUE) %>%
+coefs_chl <- tidy(mod, conf.int = TRUE) %>%
+  filter(grepl(":chl_sc", term)) %>% 
+  bind_rows(mean_coefs %>% filter(term == "speciesAgonus cataphractus:chl_sc")) %>% 
+  mutate(estimate2 = mean_coefs %>%
+           filter(term == "speciesAgonus cataphractus:chl_sc") %>%
+           pull(estimate) + estimate,
+         
+         conf.low2 = mean_coefs %>%
+           filter(term == "speciesAgonus cataphractus:chl_sc") %>%
+           pull(conf.low) + conf.low,
+         
+         conf.high2 = mean_coefs %>%
+           filter(term == "speciesAgonus cataphractus:chl_sc") %>%
+           pull(conf.high) + conf.high) %>% 
+  mutate(species = str_remove(term, ":chl_sc"),
+         species = str_remove(species, "species"))
+
+
+coefs_year <- tidy(mod, conf.int = TRUE) %>%
   filter(grepl(":year_ct", term)) %>% 
   bind_rows(mean_coefs %>% filter(term == "speciesAgonus cataphractus:year_ct")) %>% 
   mutate(estimate2 = mean_coefs %>%
@@ -506,25 +701,7 @@ coefs_year <- tidy(m1, conf.int = TRUE) %>%
   mutate(species = str_remove(term, ":year_ct"),
          species = str_remove(species, "species"))
 
-p1 <- coefs_temp %>% 
-  mutate(sign = ifelse(estimate2 > 0, "pos", "neg"),
-         sig = ifelse(estimate2 > 0 & conf.low2 > 0, "sig", "not sig"),
-         sig = ifelse(estimate2 < 0 & conf.high2 < 0, "sig", sig)) %>% 
-  ggplot(aes(estimate2, reorder(species, coefs_year$estimate2), fill = sig, color = sign, shape = sig)) + 
-  geom_point(fill = NA) + 
-  scale_shape_manual(values = c(21, 19)) +
-  geom_errorbar(aes(xmin = conf.low2, xmax = conf.high2), 
-                width = 0, alpha = 0.3) + 
-  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
-  theme(axis.text.y = element_text(face = "italic")) + 
-  labs(y = "Species", x = "Temperature slope") + 
-  scale_color_brewer(palette = "Dark2", direction = -1) +
-  scale_fill_brewer(palette = "Dark2", direction = -1) +
-  guides(color = "none", shape = "none") +
-  geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
-  theme(legend.position = "bottom")
-
-p2 <- coefs_year %>% 
+p_year <- coefs_year %>% 
   mutate(sign = ifelse(estimate2 > 0, "pos", "neg"),
          sig = ifelse(estimate2 > 0 & conf.low2 > 0, "sig", "not sig"),
          sig = ifelse(estimate2 < 0 & conf.high2 < 0, "sig", sig)) %>% 
@@ -542,12 +719,68 @@ p2 <- coefs_year %>%
   geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
   theme(legend.position = "bottom")
 
-p2 + p1 + plot_layout(axes = "collect")
+p_temp <- coefs_temp %>% 
+  mutate(sign = ifelse(estimate2 > 0, "pos", "neg"),
+         sig = ifelse(estimate2 > 0 & conf.low2 > 0, "sig", "not sig"),
+         sig = ifelse(estimate2 < 0 & conf.high2 < 0, "sig", sig)) %>% 
+  ggplot(aes(estimate2, reorder(species, coefs_year$estimate2), fill = sig, color = sign, shape = sig)) + 
+  geom_point(fill = NA) + 
+  scale_shape_manual(values = c(21, 19)) +
+  geom_errorbar(aes(xmin = conf.low2, xmax = conf.high2), 
+                width = 0, alpha = 0.3) + 
+  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
+  theme(axis.text.y = element_text(face = "italic")) + 
+  labs(y = "Species", x = "Temperature slope") + 
+  scale_color_brewer(palette = "Dark2", direction = -1) +
+  scale_fill_brewer(palette = "Dark2", direction = -1) +
+  guides(color = "none", shape = "none") +
+  geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
+  theme(legend.position = "bottom")
+
+p_chl <- coefs_chl %>% 
+  mutate(sign = ifelse(estimate2 > 0, "pos", "neg"),
+         sig = ifelse(estimate2 > 0 & conf.low2 > 0, "sig", "not sig"),
+         sig = ifelse(estimate2 < 0 & conf.high2 < 0, "sig", sig)) %>% 
+  ggplot(aes(estimate2, reorder(species, coefs_year$estimate2), fill = sig, color = sign, shape = sig)) + 
+  geom_point(fill = NA) + 
+  scale_shape_manual(values = c(21, 19)) +
+  geom_errorbar(aes(xmin = conf.low2, xmax = conf.high2), 
+                width = 0, alpha = 0.3) + 
+  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
+  theme(axis.text.y = element_text(face = "italic")) + 
+  labs(y = "Species", x = "Chlorophyll slope") + 
+  scale_color_brewer(palette = "Dark2", direction = -1) +
+  scale_fill_brewer(palette = "Dark2", direction = -1) +
+  guides(color = "none", shape = "none") +
+  geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
+  theme(legend.position = "bottom")
+
+## Depth excluded due to insignificant effect across species and not present in the best performing parametrization. 
+# p_depth <- coefs_depth %>% 
+#   mutate(sign = ifelse(estimate2 > 0, "pos", "neg"),
+#          sig = ifelse(estimate2 > 0 & conf.low2 > 0, "sig", "not sig"),
+#          sig = ifelse(estimate2 < 0 & conf.high2 < 0, "sig", sig)) %>% 
+#   ggplot(aes(estimate2, reorder(species, coefs_year$estimate2), fill = sig, color = sign, shape = sig)) + 
+#   geom_point(fill = NA) + 
+#   scale_shape_manual(values = c(21, 19)) +
+#   geom_errorbar(aes(xmin = conf.low2, xmax = conf.high2), 
+#                 width = 0, alpha = 0.3) + 
+#   geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
+#   theme(axis.text.y = element_text(face = "italic")) + 
+#   labs(y = "Species", x = "Depth slope") + 
+#   scale_color_brewer(palette = "Dark2", direction = -1) +
+#   scale_fill_brewer(palette = "Dark2", direction = -1) +
+#   guides(color = "none", shape = "none") +
+#   geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
+#   theme(legend.position = "bottom")
+
+p_year + p_temp + p_chl +  plot_layout(axes = "collect")
 
 ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 10, units = "cm")
+
 ```
 
-### Conditional predictions of temperature and year, with real values on the x and data, on 3 select species with contrasting trends
+### Conditional predictions of temperature, chl and year, with real values on the x and data, on 3 select species with contrasting trends.
 
 ```{r}
 #| message: false
@@ -560,10 +793,11 @@ nd_y <- d %>%
   ungroup() %>% 
   mutate(yday_ct = 0,
          temp_sc = 0,
+         chl_sc = 0, 
          year = as.numeric(year_ct + median(d$year))) %>% 
   filter(year %in% unique(d$year))
 
-pred_y <- predict(m1, newdata = nd_y, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+pred_y <- predict(mod, newdata = nd_y, re_form = NA, re_form_iid = NA, se_fit = TRUE)
 
 # Temperature effect
 nd_t <- d %>%
@@ -574,10 +808,26 @@ nd_t <- d %>%
   mutate(yday_ct = 0,
          year_ct = 10, # 2015
          year = as.numeric(year_ct + median(d$year)),
+         chl_sc = 0, 
          temp = (temp_sc * sd(d$temp)) + mean(d$temp)) %>% 
   filter(year %in% unique(d$year))
 
-pred_t <- predict(m1, newdata = nd_t, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+pred_t <- predict(mod, newdata = nd_t, re_form = NA, re_form_iid = NA, se_fit = TRUE)
+
+# Chlorophyll effect
+nd_c <- d %>%
+  filter(species %in% c("Limanda limanda", "Maurolicus muelleri", "Sardina pilchardus")) %>% 
+  group_by(species) %>%
+  data_grid(chl_sc = unique(chl_sc)) %>% 
+  ungroup() %>% 
+  mutate(yday_ct = 0,
+         year_ct = 10, # 2015
+         year = as.numeric(year_ct + median(d$year)),
+         temp_sc = 0, 
+         chl = (chl_sc * sd(d$chl)) + mean(d$chl)) %>%
+  filter(year %in% unique(d$year))
+
+pred_c <- predict(mod, newdata = nd_c, re_form = NA, re_form_iid = NA, se_fit = TRUE)
 
 # Plot!
 lab_y <- tibble(species = c("Limanda limanda", "Maurolicus muelleri", "Sardina pilchardus"),
@@ -626,7 +876,30 @@ p2 <- ggplot(pred_t, aes(temp, exp(est), color = species, fill = species)) +
 
 p2
 
-p1 / p2 +
+lab_c <- tibble(species = c("Limanda limanda", "Maurolicus muelleri", "Sardina pilchardus"),
+                lab = c("d)", "e)", "f)"))
+
+p3 <- ggplot(pred_c, aes(chl, exp(est), color = species, fill = species)) + 
+  geom_jitter(data = d %>% filter(species %in% c(nd_y$species)),
+              aes(chl, length_mm), alpha = 0.5, height = 0, width = 0.3,
+              size = 0.95, fill = NA, shape = 21) +
+  geom_ribbon(aes(ymin = exp(est - 1.96*est_se),
+                  ymax = exp(est + 1.96*est_se)), alpha = 0.4,
+              fill = "grey", color = NA) +
+  geom_line(linewidth = 1, color = "grey50") +
+  theme(strip.text = element_text(face = "italic")) +
+  geom_text(data = lab_t, aes(label = lab), x = 0.5, y = Inf, vjust = 2,
+            color = "grey20") +
+  labs(x = "Chlorophyll (mg/m^3)", y = "Length (mm)") + 
+  coord_cartesian(xlim = c(min(pred_t$temp), max(pred_t$temp))) +
+  guides(color = "none", fill = "none") +
+  facet_wrap(~species, scales = "free") + 
+  scale_color_brewer(palette = "Accent") +
+  scale_fill_brewer(palette = "Accent")
+
+p3
+
+p1 / p2 / p3 + 
   plot_layout(axes = "collect")
 
 ggsave(paste0(home, "/figures/conditional.pdf"), width = 17, height = 12, units = "cm")

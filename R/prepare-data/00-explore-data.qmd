@@ -35,10 +35,20 @@ library(terra)
 library(viridis)
 library(devtools)
 library(ggsidekick); theme_set(theme_sleek())
+library(crayon)
+library(marmap)
 
+# Point to wd 
 home <- here::here()
-# source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")
-source(paste0(home, "/R/functions/map-plot.R"))
+
+# Load all custom functions in R/function
+# - map-plot [source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")]
+# - callCopernicusCovariate
+# - extractCovariateAtLocation
+for(fun in list.files(paste0(home, "/R/functions"))){
+  source(paste(home, "R/functions", fun, sep = "/"))
+}
+
 ```
 
 # Explore data
@@ -77,7 +87,7 @@ length_old <- length_old %>%
   mutate(haul_id = paste(year, month, day, haul, sep = "_"))
 
 # Read trawl data and match in coordinates
-trawl_old <- read_excel(paste0(home, "/data/larvea/1992-2010 MIK SWE Tråldata.xlsx"),
+trawl_old <- read_excel(paste0(home, "/data/larvea/1992-2010 MIK SWE Tråldata.xlsx"),
                         sheet = 1,
                         skip = 8) %>% 
   clean_names() %>% 
@@ -239,160 +249,186 @@ summary(d$year)
 
 ```
 
-## Add temperature covariate to hauls
+## Add covariate to hauls
 
-https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
-
-### Satelite derived temperatures
 
 ```{r}
-# https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
 
-print(nc_open(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")))
+# Specify covariates path for simplicity
+covPath <- paste0(home, "/data/covariates")
 
-temp_tibble1 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
+```
 
-temp_tibble2 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802082358.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
+### Satellite derived temperatures
+https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
 
-temp_tibble3 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802166794.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
 
-temp_tibble4 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802239078.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
+```{r}
+## Load satellite derived SST.
+# Source: https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
+# Print details
+print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc", sep = "/")))
 
-temp_tibble5 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802304331.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
+# Load and gather the temperature data in a tibble
+temp_tibble <- callCopernicusCovariate("sst", messages = 1) 
 
-temp_tibble6 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802375462.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
 
-temp_tibble7 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802434416.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble8 <- tidync(paste0(home, "/data/copernicus/DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802668854.nc")) %>%
-  hyper_tibble() %>% 
-  mutate(date = as_datetime(time, origin = '1970-01-01')) %>%
-  mutate(month = month(date),
-           day = day(date),
-           year = year(date)) %>% 
-  filter(month == 1) %>% 
-  group_by(year, longitude, latitude) %>% 
-  summarise(sst = mean(analysed_sst) - 273.15) %>% 
-  ungroup()
-
-temp_tibble <- bind_rows(temp_tibble1,
-                         temp_tibble2,
-                         temp_tibble3,
-                         temp_tibble4,
-                         temp_tibble5,
-                         temp_tibble6,
-                         temp_tibble7,
-                         temp_tibble8)
-
-# FIXME: Make this a function instead...
 ```
 
 ```{r}
+
+# Visualize temperature frequency distribution
 hist(temp_tibble$sst)
 
-unique(temp_tibble$year)
-
+# Visualize temperature spatial distribution
 # plot_map +
 #   geom_point(data = temp_tibble,
 #              aes(X*1000, Y*1000, color = sst))
 
-# Loop through all year combos, extract the temperatures at the data locations
-
-# Loop, make raster and extract
-temp_list <- list()
+# Obtain temporal availability, this will be the temporal window to filter the data 
+unique(temp_tibble$year)
 
 # Trim years we have temperature for (again, annoying! Fix the temperatures later)
 d <- d %>% 
   filter(year %in% unique(temp_tibble$year))
 
-for(i in unique(d$year)) {
-  
-  d_sub <- filter(d, year == i)
-  temp_tibble_sub <- filter(temp_tibble, year == i)
-  
-  # Convert to raster
-  temp_raster <- as_spatraster(temp_tibble_sub, xycols = 2:3,
-                               crs = "WGS84", digits = 2)
+# Loop through all year combos, extract the temperatures at the data locations
+d <- extractCovariateAtLocation(
+  "sst", # Name of the covariate to extract. One of: sst, chlorophyll, depth. 
+  d, # A df containing the set of yearand locations to be evaluated.
+  temp_tibble,  # A df containing the covariate at location
+  changesYearly = 1, # Is the covariate time variant (e.g. temp) or not (e.g. depth) 
+  "temp",# Name to give to the covariate evaluated at location in the df
+  messages = 1 # dichotomous
+)
 
-  ggplot() +
-    geom_spatraster(data = temp_raster$sst, aes(fill = sst))
-
-  # Extract from raster
-  d_sub$temp <- terra::extract(temp_raster$sst,
-                               d_sub %>% dplyr::select(lon, lat))$sst  
-    
-  # Save
-  temp_list[[i]] <- d_sub
-  
-}
-
-d <- bind_rows(temp_list)
 ```
 
-Plot response variables
+### Satellite derived chlorophyll abundance
+https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
+
+```{r}
+## Load satellite derived chlorophyll
+# Source: https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/download
+# Print details
+print(nc_open(paste(covPath, "chlorophyll", "cmems_mod_glo_bgc_my_0.25_P1D-m_1713795613611_01012017_12312022.nc", sep = "/")))
+
+# Load and gather the temperature data in a tibble
+chl_tibble <- callCopernicusCovariate("chlorophyll", messages = 1) 
+
+
+```
+
+```{r}
+
+# Visualize chlorophyll frequency distribution
+hist(chl_tibble$chl)
+
+# Visualize chlorophyll spatial distribution
+# plot_map +
+#   geom_point(data = chl_tibble,
+#              aes(X*1000, Y*1000, color = chl))
+
+# Obtain temporal availability, this will be the temporal window to filter the data 
+sort(unique(chl_tibble$year))
+
+# Trim years we have chlorophyll for. 
+d <- d %>% 
+  filter(year %in% unique(chl_tibble$year)) # We loose 13% of the data by including chl. 
+
+# Loop through all year combos, extract the chl at the data locations
+d <- extractCovariateAtLocation(
+  "chl", 
+  d, 
+  chl_tibble,  
+  changesYearly = 1, 
+  "chl",
+  messages = 1 
+)
+
+```
+
+
+### Satellite derived depth
+https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
+
+```{r}
+## Load satellite derived depth
+# Source: https://emodnet.ec.europa.eu/geoviewer
+# Print details
+print(nc_open(paste(covPath, "depth", "Mean depth natural colour (with land).nc", sep = "/")))
+
+# Load depth data 
+dep_raster <- terra::rast(paste0(home, "/data/covariates/depth/Mean depth natural colour (with land).nc"))
+
+# See depth extension
+plot(dep_raster)
+
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+## The raster is shifted to the Baltic and excludes 
+## some of our points. let´s get depth another way. 
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+
+## Generate a depth box containing the bathymetries. 
+depth_box <- getNOAA.bathy(min(d$lon) - .1, max(d$lon) + .1, min(d$lat)  - .1, max(d$lat) + .1)
+
+```
+
+```{r, eval = F}
+
+# Visualize depth frequency distribution
+hist(dep_raster)
+
+# Extract depth at locations
+d <- extractCovariateAtLocation(
+  "elevation", # Name of the covariate to extract. One of: sst, chlorophyll, elevation 
+  d, # A df containing the set locations to be evaluated.
+  dep_raster, 
+  changesYearly = 0, 
+  nametocov = "depth2",
+  messages = 1 
+)
+
+# The depth data is shifted towards the Baltic, leading to non assignment of depths. 
+plot_map +
+   geom_point(data = d,
+              aes(X*1000, Y*1000, color = depth2))
+
+
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+## The raster is shifted to the Baltic and excludes 
+## some of our points. let´s get depth another way.
+## i.e. using marmap (thus NOAA) source. 
+## +++++++++++++++++++++++++++++++++++++++++++++++++
+
+## Obtain depth at locations. 
+d <- cbind(
+  d,
+  get.depth(depth_box, x=d$lon, y=d$lat, locator=F)["depth"]
+)
+
+## Convert to strictly positive values. 
+d$depth <- d$depth*(-1)
+
+# Check
+plot_map +
+   geom_point(data = d,
+              aes(X*1000, Y*1000, color = depth))
+
+
+```
+
+
+## Check covariates 
+
+```{r}
+
+# Get the proportion of observations not assigned with a covariate value at prior steps
+colMeans(is.na(d))
+
+```
+
+## Plot response variables
 
 ```{r}
 #| message: false
@@ -424,6 +460,29 @@ ggplot(d, aes(temp, length_mm)) +
   geom_smooth(method = "lm") +
   #geom_smooth() +
   facet_wrap(~species, scales = "free")
+
+# Effect of chlorophyll
+ggplot(d, aes(chl, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  #geom_smooth() +
+  facet_wrap(~species, scales = "free")
+
+# Effect of depth [source: Copernicus]
+ggplot(d, aes(depth2, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  #geom_smooth() +
+  facet_wrap(~species, scales = "free")
+
+# Effect of depth [source: NOAA] 
+ggplot(d, aes(depth, length_mm)) + 
+  geom_point(size = 0.4, alpha = 0.4) +  
+  geom_smooth(method = "lm") +
+  #geom_smooth() +
+  facet_wrap(~species, scales = "free")
+
+
 ```
 
 ## Save data
@@ -432,5 +491,6 @@ ggplot(d, aes(temp, length_mm)) +
 d <- d %>% drop_na(temp)
 
 write_csv(d, paste0(home, "/data/clean/larval_size.csv"))
+
 ```
 
