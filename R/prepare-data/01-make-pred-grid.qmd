@@ -81,7 +81,7 @@ pred_grid <- expand.grid(
   year = seq(min(d$year), max(d$year))
   )
 
-ggplot(pred_grid %>% filter(year == 2019), aes(X, Y)) +
+ggplot(pred_grid |> filter(year == 2019), aes(X, Y)) +
   geom_point(size = 0.1) +
   theme_void() +
   coord_sf()
@@ -101,7 +101,7 @@ plot_map +
 # Add lat and lon
 # Need to go from UTM to lat long for this one...
 # https://stackoverflow.com/questions/30018098/how-to-convert-utm-coordinates-to-lat-and-long-in-r
-xy <- as.matrix(pred_grid %>% dplyr::select(X, Y) %>% mutate(X = X*1000, Y = Y*1000))
+xy <- as.matrix(pred_grid |> dplyr::select(X, Y) |> mutate(X = X*1000, Y = Y*1000))
 v <- vect(xy, crs="+proj=utm +zone=32 +datum=WGS84  +units=m")
 y <- project(v, "+proj=longlat +datum=WGS84")
 lonlat <- geom(y)[, c("x", "y")]
@@ -136,9 +136,9 @@ plot_map +
 # )
 
 # Remove Denmanrk... 
-pred_grid <- pred_grid %>% 
-  mutate(keep = ifelse(lat < 57.103 & lon < 10.28, "N", "Y")) %>% 
-  filter(keep == "Y") %>% 
+pred_grid <- pred_grid |> 
+  mutate(keep = ifelse(lat < 57.103 & lon < 10.28, "N", "Y")) |> 
+  filter(keep == "Y") |> 
   dplyr:::select(-keep)
 
 plot_map +
@@ -169,7 +169,7 @@ temp_tibble <- callCopernicusCovariate("sst", messages = 1)
 unique(temp_tibble$year)
 
 # Sometimes we don't have covariates for the full extent of the data
-pred_grid <- pred_grid %>% 
+pred_grid <- pred_grid |> 
   filter(year %in% unique(temp_tibble$year))
 
 # Loop through all year combos, extract the temperatures at the data locations
@@ -183,24 +183,24 @@ pred_grid <- extractCovariateAtLocation(
 )
 
 plot_map_fc + 
-  geom_raster(data = pred_grid %>% filter(!year == 2011), aes(X*1000, Y*1000, fill = temp)) + 
+  geom_raster(data = pred_grid |> filter(!year == 2011), aes(X*1000, Y*1000, fill = temp)) + 
   facet_wrap(~year, ncol = 7) + 
   theme_facet_map(base_size = 10) + 
   geom_sf() +
   scale_fill_viridis(option = "magma", name = "January SST (°C)")
 
-ggsave(paste0(home, "/figures/sst.pdf"), width = 17, height = 15, units = "cm")
+#ggsave(paste0(home, "/figures/sst.pdf"), width = 17, height = 15, units = "cm")
 
 # Mean temperature in the domain over time
-pred_grid %>% 
-  drop_na(temp) %>% 
-  summarise(temp = mean(temp), .by = "year") %>% 
+pred_grid |> 
+  drop_na(temp) |> 
+  summarise(temp = mean(temp), .by = "year") |> 
   ggplot(aes(year, temp)) + 
   geom_point(size = 1.5, color = "gray10") + 
   labs(y = "Mean January SST (°C)", x = "Year") + 
   geom_smooth(method = "gam", formula = y~s(x, k = 8), color = "tomato3")
 
-ggsave(paste0(home, "/figures/sst_mean.pdf"), width = 11, height = 11, units = "cm")
+#ggsave(paste0(home, "/figures/sst_mean.pdf"), width = 11, height = 11, units = "cm")
 ```
 
 ### Chlorophyll
@@ -218,7 +218,7 @@ chl_tibble <- callCopernicusCovariate("chlorophyll", messages = 1)
 sort(unique(chl_tibble$year))
 
 # Sometimes we don't have covariates for the full extent of the data
-pred_grid <- pred_grid %>% 
+pred_grid <- pred_grid |> 
   filter(year %in% unique(chl_tibble$year))
 
 # Loop through all year combos, extract the chlorofylll at the data locations
@@ -232,24 +232,24 @@ pred_grid <- extractCovariateAtLocation(
 )
 
 plot_map_fc + 
-  geom_raster(data = pred_grid %>% filter(!year == 2011), aes(X*1000, Y*1000, fill = chl)) + 
+  geom_raster(data = pred_grid |> filter(!year == 2011), aes(X*1000, Y*1000, fill = chl)) + 
   facet_wrap(~year, ncol = 7) + 
   theme_facet_map(base_size = 10) + 
   geom_sf() +
   scale_fill_viridis(option = "viridis", name = "January chl (mg/m^3)")
 
-ggsave(paste0(home, "/figures/chl.pdf"), width = 17, height = 15, units = "cm")
+#ggsave(paste0(home, "/figures/chl.pdf"), width = 17, height = 15, units = "cm")
 
 # Mean chlorophyll in the domain over time
-pred_grid %>% 
-  drop_na(chl) %>% 
-  summarise(chl = mean(chl), .by = "year") %>% 
+pred_grid |> 
+  drop_na(chl) |> 
+  summarise(chl = mean(chl), .by = "year") |> 
   ggplot(aes(year, chl)) + 
   geom_point(size = 1.5, color = "gray10") + 
   labs(y = "Mean January chl (mg/m^3)", x = "Year") + 
   geom_smooth(method = "gam", formula = y~s(x, k = 8), color = "tomato3")
 
-ggsave(paste0(home, "/figures/chl_mean.pdf"), width = 11, height = 11, units = "cm")
+#ggsave(paste0(home, "/figures/chl_mean.pdf"), width = 11, height = 11, units = "cm")
 ```
 
 ## Save
