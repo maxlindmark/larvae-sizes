@@ -1,0 +1,404 @@
+---
+title: "Collate larval density data"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+  
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries
+library(tidyverse)
+library(tidyterra)
+library(tidync)
+library(ggridges)
+library(readxl)
+library(janitor)
+library(lubridate)
+library(sdmTMB)
+library(ncdf4)
+library(patchwork)
+library(terra)
+library(viridis)
+library(devtools)
+library(ggsidekick)
+theme_set(theme_sleek())
+library(crayon)
+library(marmap)
+library(tidylog)
+
+# Point to wd
+home <- here::here()
+
+# Load all custom functions in R/function
+# - map-plot [source_url("https://raw.githubusercontent.com/maxlindmark/cod-interactions/main/R/functions/map-plot.R")]
+# - callCopernicusCovariate
+# - extractCovariateAtLocation
+for (fun in list.files(paste0(home, "/R/functions"))) {
+  source(paste(home, "R/functions", fun, sep = "/"))
+}
+```
+
+# Explore data
+## Read and clean data
+### Old data
+
+```{r merge stomach}
+#| message: false
+#| warning: false
+
+# Get the species we do length modelling on and subset density data accordingly
+# For other studies, we could explore using more species!
+species_with_length <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv")) |>
+  distinct(species) |>
+  pull()
+
+# 1992-2008
+density_old <- read_excel(paste0(home, "/data/larvea/1992_2010 MIK SWE Alla arter.xlsx"),
+  sheet = 1,
+  skip = 20
+)
+
+# Clean data!
+density_old <- density_old |>
+  clean_names() |>
+  mutate(haul_id = paste(year, month, day, haul, sep = "_")) |>
+  mutate(species = fct_recode(species, "Chirolophis ascanii" = "Chirolophis  ascanii")) |>
+  filter(species %in% species_with_length) |>
+  drop_na(no_m2) |>
+  dplyr::select(no_m2, species, haul_id)
+
+# Read trawl data and match in coordinates and get unique hauls
+trawl_old <- read_excel(paste0(home, "/data/larvea/1992-2010 MIK SWE Tråldata.xlsx"),
+  sheet = 1,
+  skip = 8
+) |>
+  clean_names() |>
+  # the last two coordinate columns are decimal degrees of haul position
+  rename(
+    haul = haul_no,
+    lat = lat_decim_20,
+    lon = long_decim_21
+  ) |>
+  # two rows without info, including year, so I'm dropping these
+  drop_na(year) |>
+  mutate(haul_id = paste(year, month, day, haul, sep = "_")) |>
+  distinct(haul_id, .keep_all = TRUE) |>
+  dplyr::select(haul_id, lat, lon, year, month, day)
+
+# No we need to add the zero catches. Make a species * haul id
+trawl_old <- expand_grid(trawl_old, species = unique(density_old$species)) |>
+  arrange(haul_id, species)
+
+# Join trawl data to length data. If there's no match, replace NA with 0!
+old <- trawl_old |>
+  left_join(density_old, by = c("haul_id", "species")) |>
+  mutate(
+    period = "old",
+    day = as.numeric(day),
+    month = as.numeric(month),
+    no_m2 = replace_na(no_m2, 0)
+  )
+```
+
+### New data
+
+```{r}
+#| message: false
+#| warning: false
+
+# 2008-2022
+density_new <- read_excel(paste0(home, "/data/larvea/ELDB(s) bara fisk 2008-2024.xlsx")) |>
+  clean_names() |>
+  mutate(species = str_to_sentence(species)) |>
+  mutate(species = fct_recode(species, "Chirolophis ascanii" = "Chirolophis  ascanii")) |>
+  filter(species %in% species_with_length) |>
+  summarise(n = n(), .by = c(species, haul_id))
+
+# By haul id and species, summarise (1 row = 1 individual)
+# trawl_new <- read_excel(paste0(home, "/data/larvea/ELDB 2008-2024.xlsx")) |>
+trawl_new <- read_excel(paste0(home, "/data/larvea/ELDB 2008-2024 - rättade djup.xlsx")) |>
+  filter(Notes != "ogiltigt!" | is.na(Notes)) |>
+  clean_names() |>
+  rename(
+    lat = start_latitud,
+    lon = start_longitud
+  ) |>
+  dplyr::select(year, day, month, haul_id, national_haul_id, lat, lon, depth_lower, flow_int_revs, flow_int_calibr)
+
+# No we need to add the zero catches. Make a species * haul id
+trawl_new <- expand_grid(trawl_new, species = unique(density_new$species)) |>
+  arrange(haul_id, species)
+
+# Join trawl data to length data. If there's no match, replace NA with 0!
+# Then make sure to remove species-year combinations where I have no catch at all (also no length obviously)
+# Hence, zero catches are only within a year where we at least caught something
+new <- trawl_new |>
+  left_join(density_new, by = c("haul_id", "species")) |>
+  mutate(
+    period = "new",
+    day = as.numeric(day),
+    month = as.numeric(month),
+    n = replace_na(n, 0)
+  ) |> 
+  mutate(max = max(n), .by = c(species, year)) |> 
+  filter(max > 0) |> 
+  dplyr::select(-max)
+
+# new |> 
+#   filter(max == 0) |> 
+#   distinct(species, year)
+
+# Calculate density using the same formula as in the old data
+new |> 
+  group_by(year) |> 
+  summarise_all(function(x) mean(is.na(x)))
+
+# Replace NA in flow_int_calibr with the most common value
+new |> summarise(n = n(), .by = flow_int_calibr) |> drop_na()
+
+new <- new |>
+  filter(flow_int_revs > 0) |>
+  mutate(
+    flow_int_calibr = replace_na(flow_int_calibr, 3.33),
+    eff_flow = flow_int_revs / flow_int_calibr,
+    no_m2 = (n / (3.14 * eff_flow)) * (depth_lower + 5)
+  ) |>
+  dplyr::select(-flow_int_revs, -flow_int_calibr, -eff_flow, -depth_lower, -n) |>
+  mutate(year = as.numeric(year))
+```
+
+### Join old and new
+
+```{r}
+#| message: false
+#| warning: false
+
+overlapping_yrs <- intersect(new$year, old$year)
+
+# new |> filter(year %in% overlapping_yrs) |> distinct(haul_id) |> nrow()
+# old |> filter(year %in% overlapping_yrs) |> distinct(haul_id) |> nrow()
+# 
+# new |> filter(year == 2009 & day == 4 & month == 2) |> distinct(national_haul_id, haul_id)
+# old |> filter(year == 2009 & day == 4 & month == 2) |> distinct(haul_id)
+# 
+# new |> filter(haul_id == "2009SE_151") |> arrange(species)
+# new |> filter(national_haul_id == "2009SE_147") |> arrange(species)
+# old |> filter(haul_id == "2009_02_04_151") |> arrange(species)
+
+old <- old |> filter(!year %in% c(overlapping_yrs))
+
+d <- bind_rows(old, new) |>
+  mutate(yday = yday(paste(year, month, day, sep = "-"))) |>
+  filter(lon > 8) |>
+  drop_na(lat)
+
+# Add km UTM coords
+d <- d |>
+  add_utm_columns(ll_names = c("lon", "lat"))
+```
+
+## Explore data
+
+```{r}
+ggplot(d, aes(no_m2)) +
+  geom_histogram() +
+  facet_wrap(~species, scales = "free")
+
+plot_map_fc +
+  geom_point(
+    data = d,
+    aes(X * 1000, Y * 1000, color = no_m2),
+    size = 0.5
+  ) +
+  facet_wrap(~species) +
+  scale_color_viridis(trans = "sqrt")
+
+plot_map_fc +
+  geom_point(
+    data = d |>
+      mutate(pres = ifelse(no_m2 > 0, "y", "n")),
+    aes(X * 1000, Y * 1000, color = pres),
+    size = 0.1
+  ) +
+  facet_wrap(~species)
+```
+
+## Add covariate to hauls
+
+```{r}
+# Specify covariates path for simplicity
+covPath <- paste0(home, "/data/covariates")
+```
+
+### Satellite derived temperatures
+https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
+
+```{r}
+## Load satellite derived SST.
+# Source: https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
+# Print details
+print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc", sep = "/")))
+
+# Load and gather the temperature data in a tibble
+temp_tibble <- callCopernicusCovariate("sst", messages = 1)
+```
+
+```{r}
+# Visualize temperature frequency distribution
+hist(temp_tibble$sst)
+
+# Visualize temperature spatial distribution
+# plot_map +
+#   geom_point(data = temp_tibble,
+#              aes(X*1000, Y*1000, color = sst))
+
+# Obtain temporal availability, this will be the temporal window to filter the data
+unique(temp_tibble$year)
+
+# Trim years we have temperature for (again, annoying! Fix the temperatures later)
+d <- d |>
+  filter(year %in% unique(temp_tibble$year))
+
+# Loop through all year combos, extract the temperatures at the data locations
+d <- extractCovariateAtLocation(
+  "sst", # Name of the covariate to extract. One of: sst, chlorophyll, depth.
+  d, # A df containing the set of yearand locations to be evaluated.
+  temp_tibble, # A df containing the covariate at location
+  changesYearly = 1, # Is the covariate time variant (e.g. temp) or not (e.g. depth)
+  "temp", # Name to give to the covariate evaluated at location in the df
+  messages = 1 # dichotomous
+)
+```
+
+### Satellite derived chlorophyll abundance
+https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
+
+```{r}
+## Load satellite derived chlorophyll
+# Source: https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/download
+# Print details
+print(nc_open(paste(covPath, "chlorophyll", "cmems_mod_glo_bgc_my_0.25_P1D-m_1713795613611_01012017_12312022.nc", sep = "/")))
+
+# Load and gather the temperature data in a tibble
+chl_tibble <- callCopernicusCovariate("chlorophyll", messages = 1)
+```
+
+```{r}
+# Visualize chlorophyll frequency distribution
+hist(chl_tibble$chl)
+
+# Visualize chlorophyll spatial distribution
+# plot_map +
+#   geom_point(data = chl_tibble,
+#              aes(X*1000, Y*1000, color = chl))
+
+# Obtain temporal availability, this will be the temporal window to filter the data
+sort(unique(chl_tibble$year))
+
+# Trim years we have chlorophyll for.
+d <- d |>
+  filter(year %in% unique(chl_tibble$year)) # We loose 13% of the data by including chl.
+
+# Loop through all year combos, extract the chl at the data locations
+d <- extractCovariateAtLocation(
+  "chl",
+  d,
+  chl_tibble,
+  changesYearly = 1,
+  "chl",
+  messages = 1
+)
+```
+
+### Satellite derived depth
+https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
+
+```{r}
+# Generate a depth box containing the bathymetries.
+depth_box <- getNOAA.bathy(min(d$lon) - .1, max(d$lon) + .1, min(d$lat) - .1, max(d$lat) + .1)
+
+# Obtain depth at locations.
+d <- cbind(
+  d,
+  get.depth(depth_box, x = d$lon, y = d$lat, locator = F)["depth"]
+)
+
+## Convert to strictly positive values.
+d$depth <- d$depth * (-1)
+
+# Check
+plot_map +
+  geom_point(
+    data = d,
+    aes(X * 1000, Y * 1000, color = depth)
+  )
+
+d <- d |> tidylog::filter(depth > 0)
+```
+
+## Check covariates 
+
+```{r}
+# Get the proportion of observations not assigned with a covariate value at prior steps
+colMeans(is.na(d))
+```
+
+## Plot response variables
+
+```{r}
+#| message: false
+#| warning: false
+d |>
+  summarise(n = n(), .by = species) |>
+  arrange(desc(n))
+
+# Distribution of data
+ggplot(d, aes(no_m2)) +
+  geom_histogram() +
+  facet_wrap(~species, scales = "free")
+
+# Effect of day of the year
+ggplot(d, aes(yday, no_m2)) +
+  geom_point(size = 0.4, alpha = 0.4) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~species, scales = "free")
+
+# Effect of year
+ggplot(d, aes(year, no_m2)) +
+  geom_point(size = 0.4, alpha = 0.4) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~species, scales = "free")
+
+# Effect of temperature
+ggplot(d, aes(temp, no_m2)) +
+  geom_point(size = 0.4, alpha = 0.4) +
+  geom_smooth(method = "lm") +
+  # geom_smooth() +
+  facet_wrap(~species, scales = "free")
+
+# Effect of chlorophyll
+ggplot(d, aes(chl, no_m2)) +
+  geom_point(size = 0.4, alpha = 0.4) +
+  geom_smooth(method = "lm") +
+  # geom_smooth() +
+  facet_wrap(~species, scales = "free")
+```
+
+## Save data
+
+```{r}
+write_csv(d, paste0(home, "/data/clean/larval_density.csv"))
+```

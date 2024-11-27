@@ -1,0 +1,263 @@
+---
+title: "Make the prediction grid"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+
+## Intro
+Make an evenly spaced UTM prediction grid with all spatially varying covariates for the diet and the biomass data
+
+```{r lib}
+#| message: false
+
+library(tidyverse)
+library(tidylog)
+library(tidync)
+library(tidyterra)
+library(sp)
+library(devtools)
+library(RCurl)
+library(sdmTMB)
+library(ncdf4)
+library(terra)
+library(viridis)
+library(marmap)
+library(crayon)
+# devtools::install_github("seananderson/ggsidekick") # not on CRAN
+library(ggsidekick)
+theme_set(theme_sleek())
+
+home <- here::here()
+
+for (fun in list.files(paste0(home, "/R/functions"))) {
+  source(paste(home, "R/functions", fun, sep = "/"))
+}
+```
+
+Read data and depth-raster
+
+```{r data}
+# Read data
+d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv"))
+```
+
+## Make the grid
+First make a grid for the area, then subset that based on the extend of the size data
+
+```{r make pred grid}
+x <- d$X
+y <- d$Y
+z <- chull(x, y)
+
+coords <- cbind(x[z], y[z])
+
+coords <- rbind(coords, coords[1, ])
+
+plot(coords[, 1] ~ coords[, 2]) # plot data
+
+sp_poly <- sp::SpatialPolygons(
+  list(sp::Polygons(list(sp::Polygon(coords)), ID = 1))
+)
+
+sp_poly_df <- sp::SpatialPolygonsDataFrame(sp_poly,
+  data = data.frame(ID = 1)
+)
+cell_width <- 3
+
+pred_grid <- expand.grid(
+  X = seq(min(d$X), max(d$X), cell_width),
+  Y = seq(min(d$Y), max(d$Y), cell_width),
+  year = seq(min(d$year), max(d$year))
+)
+
+ggplot(pred_grid |> filter(year == 2019), aes(X, Y)) +
+  geom_point(size = 0.1) +
+  theme_void() +
+  coord_sf()
+
+sp::coordinates(pred_grid) <- c("X", "Y")
+
+inside <- !is.na(sp::over(pred_grid, as(sp_poly_df, "SpatialPolygons")))
+
+pred_grid <- pred_grid[inside, ]
+
+pred_grid <- as.data.frame(pred_grid)
+
+plot_map +
+  geom_point(data = filter(pred_grid, year == 1999), aes(X * 1000, Y * 1000), size = 0.001, alpha = 0.5) +
+  NULL
+
+# Add lat and lon
+# Need to go from UTM to lat long for this one...
+# https://stackoverflow.com/questions/30018098/how-to-convert-utm-coordinates-to-lat-and-long-in-r
+xy <- as.matrix(pred_grid |> dplyr::select(X, Y) |> mutate(X = X * 1000, Y = Y * 1000))
+v <- vect(xy, crs = "+proj=utm +zone=32 +datum=WGS84  +units=m")
+y <- project(v, "+proj=longlat +datum=WGS84")
+lonlat <- geom(y)[, c("x", "y")]
+
+pred_grid$lon <- lonlat[, 1]
+pred_grid$lat <- lonlat[, 2]
+```
+
+### Depth and crop
+
+```{r}
+## Generate a depth box containing the bathymetries.
+depth_box <- getNOAA.bathy(min(d$lon) - .1, max(d$lon) + .1, min(d$lat) - .1, max(d$lat) + .1)
+
+pred_grid$depth <- get.depth(depth_box, x = pred_grid$lon, y = pred_grid$lat, locator = F)$depth
+
+## Convert to strictly positive values.
+pred_grid$depth <- pred_grid$depth * (-1)
+
+plot_map +
+  geom_raster(
+    data = pred_grid,
+    aes(X * 1000, Y * 1000, fill = depth)
+  ) +
+  geom_sf()
+
+# extractCovariateAtLocation(
+#   "elevation", # Name of the covariate to extract. One of: sst, chlorophyll, elevation
+#   pred_grid, # A df containing the set locations to be evaluated.
+#   dep_raster,
+#   changesYearly = 0,
+#   nametocov = "depth2",
+#   messages = 1
+# )
+
+# Remove Denmanrk...
+pred_grid <- pred_grid |>
+  mutate(keep = ifelse(lat < 57.103 & lon < 10.28, "N", "Y")) |>
+  filter(keep == "Y") |>
+  dplyr:::select(-keep)
+
+plot_map +
+  geom_raster(
+    data = pred_grid,
+    aes(X * 1000, Y * 1000, fill = depth)
+  ) +
+  geom_sf()
+```
+
+## Add in dynamic covariates
+
+```{r}
+covPath <- paste0(home, "/data/covariates")
+```
+
+### Temperature
+
+```{r}
+## Load satellite derived SST.
+# Source: https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
+# Print details
+
+print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc", sep = "/")))
+
+# Load and gather the temperature data in a tibble
+temp_tibble <- callCopernicusCovariate("sst", messages = 1)
+
+# Obtain temporal availability, this will be the temporal window to filter the data
+unique(temp_tibble$year)
+
+# Sometimes we don't have covariates for the full extent of the data
+pred_grid <- pred_grid |>
+  filter(year %in% unique(temp_tibble$year))
+
+# Loop through all year combos, extract the temperatures at the data locations
+pred_grid <- extractCovariateAtLocation(
+  "sst", # Name of the covariate to extract. One of: sst, chlorophyll, depth.
+  pred_grid, # A df containing the set of year and locations to be evaluated.
+  temp_tibble, # A df containing the covariate at location
+  changesYearly = 1, # Is the covariate time variant (e.g. temp) or not (e.g. depth)
+  "temp", # Name to give to the covariate evaluated at location in the df
+  messages = 1 # dichotomous
+)
+
+plot_map_fc +
+  geom_raster(data = pred_grid |> filter(!year == 2011), aes(X * 1000, Y * 1000, fill = temp)) +
+  facet_wrap(~year, ncol = 7) +
+  theme_facet_map(base_size = 10) +
+  geom_sf() +
+  scale_fill_viridis(option = "magma", name = "January SST (°C)")
+
+# ggsave(paste0(home, "/figures/sst.pdf"), width = 17, height = 15, units = "cm")
+
+# Mean temperature in the domain over time
+pred_grid |>
+  drop_na(temp) |>
+  summarise(temp = mean(temp), .by = "year") |>
+  ggplot(aes(year, temp)) +
+  geom_point(size = 1.5, color = "gray10") +
+  labs(y = "Mean January SST (°C)", x = "Year") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 8), color = "tomato3")
+
+# ggsave(paste0(home, "/figures/sst_mean.pdf"), width = 11, height = 11, units = "cm")
+```
+
+### Chlorophyll
+
+```{r chlorophyll}
+## Load satellite derived chlorophyll
+# Source: https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/download
+# Print details
+print(nc_open(paste(covPath, "chlorophyll", "cmems_mod_glo_bgc_my_0.25_P1D-m_1713795613611_01012017_12312022.nc", sep = "/")))
+
+# Load and gather the temperature data in a tibble
+chl_tibble <- callCopernicusCovariate("chlorophyll", messages = 1)
+
+# Obtain temporal availability, this will be the temporal window to filter the data
+sort(unique(chl_tibble$year))
+
+# Sometimes we don't have covariates for the full extent of the data
+pred_grid <- pred_grid |>
+  filter(year %in% unique(chl_tibble$year))
+
+# Loop through all year combos, extract the chlorofylll at the data locations
+pred_grid <- extractCovariateAtLocation(
+  "chl",
+  pred_grid,
+  chl_tibble,
+  changesYearly = 1,
+  "chl",
+  messages = 1
+)
+
+plot_map_fc +
+  geom_raster(data = pred_grid |> filter(!year == 2011), aes(X * 1000, Y * 1000, fill = chl)) +
+  facet_wrap(~year, ncol = 7) +
+  theme_facet_map(base_size = 10) +
+  geom_sf() +
+  scale_fill_viridis(option = "viridis", name = "January chl (mg/m^3)")
+
+# ggsave(paste0(home, "/figures/chl.pdf"), width = 17, height = 15, units = "cm")
+
+# Mean chlorophyll in the domain over time
+pred_grid |>
+  drop_na(chl) |>
+  summarise(chl = mean(chl), .by = "year") |>
+  ggplot(aes(year, chl)) +
+  geom_point(size = 1.5, color = "gray10") +
+  labs(y = "Mean January chl (mg/m^3)", x = "Year") +
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 8), color = "tomato3")
+
+# ggsave(paste0(home, "/figures/chl_mean.pdf"), width = 11, height = 11, units = "cm")
+```
+
+## Save
+
+```{r save}
+write_csv(pred_grid, file = paste0(home, "/data/clean/pred_grid.csv"))
+```

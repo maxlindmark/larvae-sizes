@@ -1,0 +1,391 @@
+---
+title: "Fit density models"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries
+library(tidyverse)
+library(tidylog)
+library(sdmTMB)
+library(patchwork)
+library(viridis)
+library(RColorBrewer)
+library(modelr)
+library(ggstats)
+library(ggspatial)
+library(ggsidekick)
+theme_set(theme_sleek())
+
+home <- here::here()
+source(paste0(home, "/R/functions/map-plot.R"))
+```
+
+Read data and prediction grid, scale variables
+
+```{r data}
+#| message: false
+
+# Read data
+# TODO: scale covariates!
+
+d <- readr::read_csv(paste0(home, "/data/clean/larval_density.csv")) |>
+  mutate(
+    yday_ct = yday - mean(yday),
+    year_f = as.factor(year),
+    species_f = as.factor(species),
+    year_ct = year - median(year),
+    depth_sc = (depth - mean(depth)) / sd(depth)
+  ) |>
+  drop_na(no_m2)
+```
+
+## Fit models by species
+
+```{r}
+# pars_list <- list()
+res_list <- list()
+# marg_list <- list()
+# spatial_list <- list()
+# range_list <- list()
+# genq_list <- list()
+# index_list <- list()
+
+for (i in unique(d$species)) {
+  print(i)
+
+  dd <- d |> filter(species == i)
+
+  # if(unique(dd$species %in% c("Anguilla anguilla"))) {
+  #
+  #   m0 <- sdmTMB(length_mm ~ temp_sc + chl_sc + year_f + yday_ct,
+  #                data = dd,
+  #                mesh = mesh,
+  #                family = gengamma(link = "log"),
+  #                spatiotemporal = "off",
+  #                spatial = "off",
+  #                time = "year")
+  #
+  #   m0 <- run_extra_optimization(m0)
+  #
+  # } else if(unique(dd$species) %in% c("Ammodytidae", "Crystallogobius linearis",
+  #                                     "Syngnathus rostellatus", "Aphia minuta")) {
+
+  # Spatial
+  mesh <- make_mesh(dd,
+    xy_cols = c("X", "Y"),
+    cutoff = 8
+  )
+
+  ggplot() +
+    inlabru::gg(mesh$mesh) +
+    coord_fixed() +
+    geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
+    annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) +
+    labs(x = "Easting (km)", y = "Northing (km)")
+
+  ggsave(paste0(home, paste("/figures/supp/density_mesh_", i, "_.pdf")), width = 14, height = 14, units = "cm")
+
+  ggplot(dd, aes(year_f, no_m2)) +
+    geom_jitter()
+
+  # dd |>
+  #   summarise(max = max(no_m2), .by = year)
+
+  m0 <- sdmTMB(no_m2 ~ s(year_ct) + poly(log(depth), 2),
+    data = dd,
+    mesh = mesh,
+    # family = delta_gamma(link1 = "log", link2 = "log", "poisson-link"),
+    family = tweedie(link = "log"),
+    spatiotemporal = "AR1",
+    spatial = "on",
+    extra_time = 2011,
+    time = "year"
+  )
+
+  print(m0)
+  m0 <- run_extra_optimization(m0)
+  sanity(m0)
+
+  # } else{
+  #
+  #   # Spatial
+  #   mesh <- make_mesh(dd,
+  #                     xy_cols = c("X", "Y"),
+  #                     cutoff = 4)
+  #
+  #   ggplot() +
+  #     inlabru::gg(mesh$mesh) +
+  #     coord_fixed() +
+  #     geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
+  #     annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) +
+  #     labs(x = "Easting (km)", y = "Northing (km)")
+  #
+  #   ggsave(paste0(home, paste("/figures/supp/mesh_", i, "_.pdf")), width = 14, height = 14, units = "cm")
+  #
+  #   m0 <- sdmTMB(length_mm ~ temp_sc + chl_sc + year_f + yday_ct,
+  #                data = dd,
+  #                mesh = mesh,
+  #                family = gengamma(link = "log"),
+  #                spatiotemporal = "off",
+  #                spatial = "on",
+  #                time = "year")
+  #
+  #   m0 <- run_extra_optimization(m0)
+  # }
+
+  # print(m0)
+  # sanity(m0)
+  dd$m0_res <- residuals(m0, type = c("mle-mvn"))
+  qqnorm(dd$m0_res)
+  abline(0, 1)
+
+
+  mesh <- make_mesh(pcod, c("X", "Y"), cutoff = 10)
+  # pcod$os <- rep(log(0.01), nrow(pcod)) # offset
+  # m <- sdmTMB(
+  #   data = pcod,
+  #   formula = density ~ poly(log(depth), 2),
+  #   mesh = mesh,
+  #   #offset = pcod$os,
+  #   family = tweedie(link = "log"),
+  #   spatial = "on",
+  #   time = "year",
+  #   extra_time = 2006,
+  #   spatiotemporal = "AR1"
+  #   )
+  # residuals(m, type = c("mle-mvn"))
+
+  # Make marginal effects plots
+  # marg_temp <- ggeffects::ggeffect(m0, "temp_sc") |> as_tibble() |> mutate(var = "Temperature")
+  # marg_chl <- ggeffects::ggeffect(m0, "chl_sc") |> as_tibble() |> mutate(var = "Chlorophyll")
+
+  # Get spatial predictions and index
+  # p <- predict(m0, newdata = pred_grid |>
+  #                filter(year %in% unique(dd$year_f)))
+  #
+  # p_ind <- predict(m0, newdata = pred_grid |>
+  #                    filter(year %in% unique(dd$year_f)),
+  #                  return_tmb_object = TRUE)
+  #
+  # ind <- get_index(p_ind, area = 1/nrow(pred_grid |> filter(year == max(year))),
+  #                  bias_correct = TRUE)
+
+  # Get range
+  if (unique(dd$species) %in% c("Anguilla anguilla")) {
+    range <- tibble()
+  } else {
+    range <- tidy(m0, effects = "ran_pars") |> filter(term == "range")
+  }
+
+  range <- range |>
+    mutate(cutoff = ifelse(i %in% c(
+      "Ammodytidae", "Crystallogobius linearis",
+      "Syngnathus rostellatus", "Aphia minuta"
+    ),
+    8, 4
+    ))
+
+  # # Get gengamma Q and phi
+  # genq_list[[i]] <- tibble(term = "gengamma_Q",
+  #                          estimate = m0$sd_report$par.fixed["gengamma_Q"]) |>
+  #   bind_rows(tidy(m0, effects = "ran_pars") |> filter(term == "phi")) |>
+  #   mutate(species = i)
+  #
+  #
+  # # Store data
+  # pars_list[[i]] <- tidy(m0) |> mutate(species = i)
+  # res_list[[i]] <- dd
+  # #marg_list[[i]] <- bind_rows(marg_year, marg_temp, marg_chl) |> mutate(species = i)
+  # spatial_list[[i]] <- p |> mutate(species = i)
+  # range_list[[i]] <- range |> mutate(species = i)
+  # index_list[[i]] <- ind |> mutate(species = i)
+}
+
+# pars <- bind_rows(pars_list)
+res <- bind_rows(res_list) |> dplyr::select(m0_res, species_f)
+# marg <- bind_rows(marg_list)
+# spatial <- bind_rows(spatial_list)
+range <- bind_rows(range_list)
+# genq <- bind_rows(genq_list)
+# index <- bind_rows(index_list)
+
+# write_csv(pars, paste0(home, "/output/pars.csv"))
+# write_csv(res, paste0(home, "/output/residuals.csv"))
+# write_csv(marg, paste0(home, "/output/marginal_effects.csv"))
+# write_csv(spatial, paste0(home, "/output/spatial.csv"))
+```
+
+### Plot residuals and other things
+
+```{r}
+# Plot residuals
+ggplot(res, aes(sample = m0_res)) +
+  stat_qq(size = 0.75, shape = 21, fill = NA) +
+  stat_qq_line() +
+  facet_wrap(~species_f, scales = "free") +
+  labs(y = "Sample Quantiles", x = "Theoretical Quantiles") +
+  theme(aspect.ratio = 1)
+
+ggsave(paste0(home, "/figures/supp/residuals.pdf"), width = 20, height = 20, units = "cm")
+```
+
+```{r}
+knitr::knit_exit()
+```
+
+
+```{r}
+# Plot range
+# ggplot(range, aes(estimate, reorder(species, estimate))) +
+#   geom_point() +
+#   geom_vline(xintercept = 5, alpha = 0.5, linetype = 2) +
+#   facet_wrap(~cutoff)
+
+ggplot(range, aes(estimate / cutoff, reorder(species, estimate))) +
+  geom_point() +
+  geom_vline(xintercept = 2, alpha = 0.5, linetype = 2)
+
+# Plot generalized gamma
+# The lognormal occurs as the internal parameter gengamma_Q approaches 0
+genq |>
+  filter(term == "gengamma_Q") |>
+  ggplot(aes(estimate, species)) +
+  facet_wrap(~term, ncol = 1) +
+  geom_point() +
+  geom_vline(xintercept = 0, alpha = 0.5, linetype = 2)
+
+# If Q matches phi the distribution should be the gamma.
+genq |>
+  ggplot(aes(estimate, species, color = term)) +
+  geom_point()
+```
+
+### Coefficients
+
+```{r}
+#| message: false
+#| warning: false
+
+# Single species approach
+pars_order <- pars |>
+  filter(term %in% c("yday_ct")) |>
+  arrange(estimate)
+
+pars |>
+  # left_join(d |> distinct(life_stage, species)) |>
+  # filter(life_stage == "larvae") |>
+  filter(term %in% c("temp_sc", "chl_sc", "yday_ct")) |>
+  mutate(term = fct_recode(term,
+    "Day of the year" = "yday_ct",
+    "Temperature" = "temp_sc",
+    "Chlorophyll" = "chl_sc"
+  )) |>
+  mutate(
+    sign = ifelse(estimate > 0, "pos", "neg"),
+    sig = ifelse(estimate > 0 & conf.low > 0, "sig", "not sig"),
+    sig = ifelse(estimate < 0 & conf.high < 0, "sig", sig)
+  ) |>
+  ggplot(aes(estimate, factor(species, levels = pars_order$species), fill = sig, color = sign, shape = sig)) +
+  facet_wrap(~ factor(term, levels = c("Day of the year", "Temperature", "Chlorophyll")), scales = "free_x") +
+  geom_point(fill = NA) +
+  scale_shape_manual(values = c(21, 19)) +
+  geom_errorbar(aes(xmin = conf.low, xmax = conf.high),
+    width = 0, alpha = 0.3
+  ) +
+  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
+  theme(axis.text.y = element_text(face = "italic")) +
+  labs(y = "Species", x = "Slope") +
+  scale_color_brewer(palette = "Dark2", direction = -1) +
+  scale_fill_brewer(palette = "Dark2", direction = -1) +
+  guides(color = "none", shape = "none") +
+  geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
+  theme(legend.position = "bottom")
+
+ggsave(paste0(home, "/figures/coefs.pdf"), width = 20, height = 12, units = "cm")
+```
+
+## Spatial plots and indices
+
+```{r}
+ggplot(index, aes(year, est)) +
+  geom_jitter(
+    data = d, aes(year, length_mm),
+    alpha = 0.3, fill = "grey30", shape = 21, color = "white", size = 2, stroke = 0.1
+  ) +
+  geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "tomato2", alpha = 0.3) +
+  geom_line(color = "tomato2") +
+  facet_wrap(~species, scales = "free") +
+  theme(strip.text = element_text(face = "italic")) +
+  labs(x = "Year", y = "Length (mm)")
+
+ggsave(paste0(home, "/figures/supp/size_index_data.pdf"), width = 19, height = 16, units = "cm")
+
+# Fit a gam to indices
+index$species_f <- as.factor(index$species)
+
+m <- sdmTMB(est ~ species_f + s(year, k = 5, by = species_f),
+  data = index,
+  spatial = "off"
+)
+
+sanity(m)
+
+index$pred <- predict(m)$est
+
+ggplot(index, aes(year, est)) +
+  # geom_jitter(data = d, aes(year, length_mm), alpha = 0.5) +
+  geom_errorbar(aes(ymin = lwr, ymax = upr), color = "steelblue", width = 0) +
+  geom_point(color = "steelblue") +
+  facet_wrap(~species, scales = "free") +
+  geom_line(aes(year, pred), color = "tomato2") +
+  theme(strip.text = element_text(face = "italic")) +
+  labs(x = "Year", y = "Length (mm)")
+
+ggsave(paste0(home, "/figures/size_index.pdf"), width = 19, height = 16, units = "cm")
+
+index |>
+  mutate(year2 = ifelse(year == min(year), "min", NA), .by = species) |>
+  mutate(year2 = ifelse(year == max(year), "max", year2), .by = species) |>
+  filter(year2 %in% c("min", "max")) |>
+  dplyr::select(year2, species, pred) |>
+  pivot_wider(values_from = pred, names_from = year2) |>
+  mutate(percent = ((`max` - `min`) / abs(`min`)) * 100) |>
+  arrange(desc(percent)) |>
+  ggplot(aes(percent, reorder(species, percent))) +
+  geom_vline(xintercept = 0, alpha = 0.5, linetype = 2) +
+  geom_point(color = "steelblue") +
+  labs(x = "Percent change", y = "Species") +
+  theme(axis.text.y = element_text(face = "italic"))
+
+ggsave(paste0(home, "/figures/percent_change.pdf"), width = 12, height = 9, units = "cm")
+
+plot_map_fc +
+  geom_raster(
+    data = spatial |>
+      mutate(est_sc = exp(est) - mean(exp(est)), .by = species),
+    aes(X * 1000, Y * 1000, fill = est_sc)
+  ) +
+  scale_fill_gradient2() +
+  facet_wrap(~species) +
+  labs(fill = "Scaled size") +
+  theme(strip.text = element_text(face = "italic"))
+
+ggsave(paste0(home, "/figures/supp/spatial_plot.pdf"), width = 16, height = 19, units = "cm")
+```
+
