@@ -236,7 +236,6 @@ d |>
 
 # Filter species with at least 6 years of data and minimum 5 sizes per year and 10 samples
 d <- d |>
-  # At least 5 samples by year
   mutate(n = n(), .by = c(species, year)) |>
   filter(n >= 10) |>
   mutate(n_years = length(unique(year)), .by = species) |>
