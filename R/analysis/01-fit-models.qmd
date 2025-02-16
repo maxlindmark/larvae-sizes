@@ -345,7 +345,7 @@ for (i in unique(d$species)) {
       annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) +
       labs(x = "Easting (km)", y = "Northing (km)")
 
-    ggsave(paste0(home, paste("/figures/supp/size_mesh_", i, "_.pdf")), width = 14, height = 14, units = "cm")
+    ggsave(paste0(home, paste0("/figures/supp/size_mesh_", i, "_.pdf")), width = 14, height = 14, units = "cm")
 
     mlength <- sdmTMB(length_mm ~ temp_sc + chl_sc + year_f + yday_ct,
       data = dd,
