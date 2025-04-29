@@ -1,0 +1,317 @@
+---
+title: "Plot covariates"
+author: "Max Lindmark"
+date: today
+date-format: iso
+toc: true
+format: 
+  html:
+    page-layout: full
+    embed-resources: true
+knitr: 
+  opts_chunk:
+    fig.align: center
+    out-width: 100%
+editor: source
+---
+
+```{r load libraries}
+#| message: false
+#| warning: false
+
+# Load libraries
+library(tidyverse)
+library(sdmTMB)
+library(patchwork)
+library(viridis)
+library(concaveman)
+library(RColorBrewer)
+library(modelr)
+library(ggstats)
+library(ggspatial)
+library(ggsidekick)
+library(tidylog)
+library(ggrepel)
+theme_set(theme_sleek())
+
+home <- here::here()
+source(paste0(home, "/R/functions/map-plot.R"))
+
+remove_attributes <- function(x) {attributes(x) <- NULL; return(x)}
+```
+
+Read data and prediction grid, scale variables
+
+```{r data}
+#| message: false
+# Read data
+d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv")) |>
+  mutate(
+    yday_ct = yday - mean(yday),
+    year_f = as.factor(year),
+    species_f = as.factor(species),
+    year_ct = year - median(year)
+  ) |>
+  mutate(across(
+    .cols = c("temp", "chl"),
+    .fns = scale,
+    .names = "{.col}_sc"
+  )) |> 
+  mutate(temp_sq = temp_sc*temp_sc) |> 
+  filter(!species == "Anguilla anguilla") |> 
+  filter(!species == "Sardina pilchardus") |> 
+  filter(!species == "Agonus cataphractus") |> 
+  as.data.frame() |> 
+  mutate(across(everything(), as.vector))
+
+# Load prediction grid
+pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) |>
+  filter(year %in% unique(d$year)) |>
+  mutate(
+    temp_sc = (temp - mean(d$temp, na.rm = TRUE)) / sd(d$temp, na.rm = TRUE),
+    temp_sq = temp_sc*temp_sc,
+    chl_sc = (chl - mean(chl, na.rm = TRUE)) / sd(chl, na.rm = TRUE),
+    year_f = as.factor(year),
+    year_ct = 0,
+    yday_ct = 0
+  ) |>
+  mutate(keep = ifelse(lon < 10 & lat < 57.15, "N", "Y")) |>
+  filter(keep == "Y") |>
+  dplyr::select(-keep)
+
+sd(d$temp)
+
+# Read density data
+b <- readr::read_csv(paste0(home, "/data/clean/larval_density.csv")) |>
+  drop_na(no_m2) |> 
+  mutate(year_f  = as.factor(year)) |> 
+  mutate(sum_no_m2 = sum(no_m2), .by = c(year, species)) |> 
+  filter(sum_no_m2 > 0)
+
+length(unique(b$haul_id))
+
+# Read ICES shapefile
+rect <- st_read("/Users/maxlindmark/Dropbox/Max work/R/pred-prey-overlap/data/shapefiles/ICES-StatRec-mapto-ICES-Areas/StatRec_map_Areas_Full_20170124.shp")
+```
+
+Plot covariates
+
+```{r}
+pal <- brewer.pal(n = 8, name = "Dark2")[c(8, 2)]
+coul <- brewer.pal(11, "Spectral")
+coul <- colorRampPalette(coul)(length(unique(d$species)))
+
+d <- d |> 
+  mutate(species2 = fct_recode(species,
+                               "A. minuta" = "Aphia minuta",
+                               "C. ascanii" = "Chirolophis ascanii",
+                               "C. harengus" = "Clupea harengus",
+                               "C. linearis" = "Crystallogobius linearis",
+                               "M. kitt" = "Microstomus kitt",
+                               "M. scorpius" = "Myoxocephalus scorpius",
+                               "P. gunnellus" = "Pholis gunnellus",
+                               "S. rostellatus" = "Syngnathus rostellatus"))
+
+# First gather the elements common to all the covariate plots
+covMapTheme <- plot_map +
+  theme(
+    legend.position.inside = c(0.25, 0.11),
+    legend.direction = "horizontal",
+    legend.key.width = unit(0.35, "cm"), # Decreased to fit multicovariates
+    legend.key.height = unit(0.2, "cm"),
+    legend.text = element_text(size = 7),
+    legend.title = element_text(size = 8)
+  ) +
+  geom_sf() +
+  annotate("text",
+    label = "Sweden", x = xmin2 + 0.95 * xrange, y = ymin2 + 0.75 * yrange,
+    color = "gray50", size = 2.5
+  ) +
+  annotate("text",
+    label = "Norway", x = xmin2 + 0.08 * xrange, y = ymin2 + 0.95 * yrange,
+    color = "gray50", size = 2.5
+  ) +
+  annotate("text",
+    label = "Denmark", x = xmin2 + 0.42 * xrange, y = ymin2 + 0.45 * yrange,
+    color = "gray50", size = 2.5
+  ) +
+  guides(fill = guide_colorbar(
+    position = "inside",
+    title.position = "top",
+    title.hjust = 0.5
+  )) +
+  NULL
+
+# Generate the data and covariate maps
+p_dat <- covMapTheme +
+  geom_sf(data = rect, aes(group = ICESNAME), fill = NA, alpha = 0.1, color = "grey85") +
+  geom_sf() +
+  geom_point(
+    data = d, aes(X * 1000, Y * 1000, color = species2),
+    size = 0.5, alpha = 1
+  ) +
+  #scale_color_manual(values = coul, name = "Species") +
+  scale_color_brewer(palette = "Paired", name = "Species") +
+  guides(color = "none") +
+  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
+           color = "gray40", size = 4) +
+  annotation_scale(bar_cols = c("grey30", "white"), height = unit(0.1, "cm")) +
+  annotation_north_arrow(
+    location = "tr", which_north = "true", height = unit(0.85, "cm"),
+    width = unit(0.85, "cm"), pad_x = unit(0.1, "in"), pad_y = unit(0.1, "in"),
+    style = north_arrow_fancy_orienteering(
+      fill = c("grey40", "white"),
+      line_col = "grey20"
+    )
+  )
+
+dens_pal <- alpha(brewer.pal(n = 10, name = "Paired"), 0.75)
+
+quants <- quantile(d$length_mm)
+quant_text <- paste0("Min: ", round(quants[1], 1),
+                    "\n25%: ", round(quants[2], 1),
+                    "\n50%: ", round(quants[3], 1),
+                    "\n75%: ", round(quants[4], 1),
+                    "\nMax: ", round(quants[5], 1))
+
+size_plot <- ggplot(d, aes(length_mm)) +
+  geom_histogram(aes(y = after_stat(count)), fill = "gray60", alpha = .5, color = NA) +
+  geom_density(data = d, aes(y = after_stat(density * 30000), 
+                              color = species2), linewidth = 1, alpha = 0.3) +
+  scale_fill_brewer(palette = "Paired", name = "Species") +
+  scale_color_manual(values = dens_pal) +
+  scale_y_continuous(
+    name = "Count",
+    sec.axis = sec_axis(~ . / 30000, name = "Density")
+  ) +
+  coord_cartesian(expand = 0) +
+  labs(x = "Length (mm)") +
+  theme(legend.position = "bottom",
+        legend.key.size = unit(0.25, "cm"),
+        legend.spacing.y = unit(0, "pt"),
+        legend.margin = margin(0, 0, 0, 0),
+        legend.title = element_blank(),
+        legend.text = element_text(face = "italic", size = 7)) +
+  guides(fill = guide_legend(ncol = 2), color = guide_legend(ncol = 2)) +
+  annotate("text", label = "(b)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
+           color = "gray40", size = 4) +
+  annotate("text", label = quant_text, x = Inf, y = Inf, 
+           vjust = 1.1, hjust = 1.1, # Adjust these values as needed
+           color = "gray40", size = 3)
+
+size_plot 
+
+p_dat | free(size_plot)
+
+# Save
+ggsave(paste0(home, "/figures/data_plot.pdf"), width = 17, height = 11, units = "cm")
+```
+
+```{r}
+# Plot covariates
+# For labels
+skag_kat_border <- data.frame(lat1 = 57.75420, 
+                              lat2 = 57.91694673025835,
+                              lon1 = 10.61630,
+                              lon2 = 11.502651981474733) 
+
+skag_kat_border <- skag_kat_border |> 
+  add_utm_columns(utm_names = c("X1", "Y1"),
+                  ll_names = c("lon1", "lat1")) |> 
+  add_utm_columns(utm_names = c("X2", "Y2"),
+                  ll_names = c("lon2", "lat2"))
+
+ann_text <- data.frame(year = 2012, 
+                       label = c("Skagerrak", "Kattegat"),
+                       lon = c(10.55, 11.2),
+                       lat = c(58.1, 57.5)) |> 
+  add_utm_columns(ll_names = c("lon", "lat"))
+
+
+# Plankton stations
+stations <- read_csv(paste0(home, "/data/plankton/stationer.csv"), locale = locale(encoding = "latin1")) |> 
+  janitor::clean_names() |> 
+  sdmTMB::add_utm_columns(ll_names = c("longitud_dd", "latitud_dd")) |> 
+  filter(!stationsnamn %in% c("ALSBÄCK", "FLADEN", "PRICKEN", "BROA", "SLÄGGÖ", "N14 FALKENBERG"))
+
+p_tempCovMap <- covMapTheme +
+  geom_raster(
+    data = pred_grid |>
+      group_by(X, Y) |>
+      summarise(mean_temp = mean(temp)),
+    aes(X * 1000, Y * 1000, fill = mean_temp)
+  ) +
+  geom_sf() + 
+  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
+           color = "gray40", size = 4) +
+  scale_fill_viridis(option = "magma", name = "Temperature (°C)") +
+  guides(color = "none") +
+  geom_segment(data = skag_kat_border, aes(x = X1*1000, xend = X2*1000,
+                                           y = Y1*1000, yend = Y2*1000),
+               alpha = 0.75, linetype = 3, color = "white") + 
+  geom_label_repel(data = ann_text, aes(x = X*1000, y = Y*1000, label = label),
+                   color = rev(pal), fill = "white", size = 2.5)
+  
+p_chlCovMap <- covMapTheme +
+  geom_raster(
+    data = pred_grid |>
+      group_by(X, Y) |>
+      summarise(mean_chl = mean(chl)),
+    aes(X * 1000, Y * 1000, fill = mean_chl)
+  ) +
+  geom_sf() + 
+  annotate("text", label = "(b)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
+           color = "gray40", size = 4) +
+  scale_fill_viridis(name = expression("Chl (mg/m"^3 * ")")) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.y = element_blank()) +
+  guides(color = "none") +
+  geom_segment(data = skag_kat_border, aes(x = X1*1000, xend = X2*1000,
+                                           y = Y1*1000, yend = Y2*1000),
+               alpha = 0.75, linetype = 3, color = "white") + 
+  geom_label_repel(data = stations |> filter(dataset == "Kattegatt"),
+                   aes(x = X*1000, y = Y*1000, label = stationsnamn),
+                   color = pal[1], fill = "white", size = 1.8, box.padding = .5) +
+  geom_label_repel(data = stations |> filter(dataset == "Skagerrak"), aes(x = X*1000, y = Y*1000, label = stationsnamn),
+                   color = pal[2], fill = "white", size = 1.8, box.padding = .5)
+
+p_chlCovMap
+
+# Plot over time
+trends <- pred_grid |>
+  pivot_longer(c(temp, chl), names_to = "var") |>
+  mutate(var = fct_recode(var,
+    "Temperature" = "temp",
+    "Chlorophyll" = "chl"
+  )) |>
+  summarise(value = mean(value), .by = c(var, year))
+
+
+tt <- trends |>
+  filter(var == "Temperature") |>
+  ggplot(aes(year, value)) +
+  geom_point(color = "grey30") +
+  geom_smooth(method = "gam", formula = y~s(x, k=8), color = "tomato") +
+  labs(x = "Year", y = "Temperature (°C)") +
+  annotate("text", label = "(c)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
+           color = "gray40", size = 4)
+
+ct <- trends |>
+  filter(var == "Chlorophyll") |>
+  ggplot(aes(year, value)) +
+  geom_point(color = "grey30") +
+  geom_smooth(method = "gam", formula = y~s(x, k=8), color = "tomato") +
+  labs(x = "Year", y = expression("Chl (kg m"^-3 * ")")) +
+  annotate("text", label = "(d)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
+           color = "gray40", size = 4)
+
+ptop <- (p_tempCovMap + p_chlCovMap) + plot_layout(axes = "collect_x")
+
+pbot <- (tt + ct) + plot_layout(axes = "collect_x")
+  
+(ptop / pbot) + plot_layout(heights = c(1, 0.65))
+
+# Save
+ggsave(paste0(home, "/figures/covar_map.pdf"), width = 17, height = 17, units = "cm")
+```

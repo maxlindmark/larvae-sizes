@@ -399,84 +399,89 @@ d |>
 covPath <- paste0(home, "/data/covariates")
 ```
 
-### Satellite derived temperatures
-https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/description
+## Ensemble
 
 ```{r}
-## Load satellite derived SST.
-# Source: https://data.marine.copernicus.eu/product/SST_BAL_SST_L4_REP_OBSERVATIONS_010_016/download
-# Print details
-print(nc_open(paste(covPath, "sst", "DMI_BAL_SST_L4_REP_OBSERVATIONS_010_016_1711802008633.nc", sep = "/")))
+read_trim_nc <- function(file_path){
+  
+  tidync(file_path) |>
+    hyper_tibble() |>
+    mutate(date = as.Date(time, origin = "1993-01-01"),
+           year = year(date),
+           month = month(date),
+           day = day(date),
+           year = year(date)) |> 
+    filter(year <= 2024 & month == 1 & day == 1 & lon > 7 & lon < 15 & lat > 54 & lat < 61 & percentiles == 50)
+}
 
-# Load and gather the temperature data in a tibble
-temp_tibble <- callCopernicusCovariate("sst", messages = 1)
+d <- d |> filter(year >= 1993)
 ```
 
 ```{r}
-# Visualize temperature frequency distribution
-hist(temp_tibble$sst)
+# Here are the data: https://zenodo.org/records/6523926
+print(nc_open(paste0(home, "/data/covariates/ensemble/thetao_ensemble_sd+ba_surface_depth_5.0_perc_ssp245.nc")))
 
-# Visualize temperature spatial distribution
-# plot_map +
-#   geom_point(data = temp_tibble,
-#              aes(X*1000, Y*1000, color = sst))
-
-# Obtain temporal availability, this will be the temporal window to filter the data
-unique(temp_tibble$year)
-
-# Trim years we have temperature for (again, annoying! Fix the temperatures later)
-d <- d |>
-  filter(year %in% unique(temp_tibble$year))
+st_tibble5 <- read_trim_nc(paste0(home, "/data/covariates/ensemble/thetao_ensemble_sd+ba_surface_depth_5.0_perc_ssp245.nc"))
 
 # Loop through all year combos, extract the temperatures at the data locations
-d <- extractCovariateAtLocation(
-  "sst", # Name of the covariate to extract. One of: sst, chlorophyll, depth.
-  d, # A df containing the set of yearand locations to be evaluated.
-  temp_tibble, # A df containing the covariate at location
-  changesYearly = 1, # Is the covariate time variant (e.g. temp) or not (e.g. depth)
-  "temp", # Name to give to the covariate evaluated at location in the df
-  messages = 1 # dichotomous
-)
-```
+temp_list <- list()
 
-### Satellite derived chlorophyll abundance
-https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description
+for (i in unique(d$year)) {
+  d_sub <- filter(d, year == i)
+  temp_tibble_sub <- filter(st_tibble5, year == i)
 
-```{r}
-## Load satellite derived chlorophyll
-# Source: https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/download
-# Print details
-print(nc_open(paste(covPath, "chlorophyll", "cmems_mod_glo_bgc_my_0.25_P1D-m_1713795613611_01012017_12312022.nc", sep = "/")))
+  # Convert to raster
+  temp_raster <- as_spatraster(temp_tibble_sub,
+    xycols = 3:4,
+    crs = "WGS84", digits = 3
+  )
 
-# Load and gather the temperature data in a tibble
-chl_tibble <- callCopernicusCovariate("chlorophyll", messages = 1)
-```
+  # Extract from raster
+  d_sub$temp <- terra::extract(
+    temp_raster$thetao,
+    d_sub |> dplyr::select(lon, lat)
+  )$thetao
 
-```{r}
-# Visualize chlorophyll frequency distribution
-hist(chl_tibble$chl)
+  # Save
+  temp_list[[i]] <- d_sub
+}
 
-# Visualize chlorophyll spatial distribution
-# plot_map +
-#   geom_point(data = chl_tibble,
-#              aes(X*1000, Y*1000, color = chl))
+d_temp <- bind_rows(temp_list)
 
-# Obtain temporal availability, this will be the temporal window to filter the data
-sort(unique(chl_tibble$year))
+# Chlorophyll - continue with d_temp
+print(nc_open(paste0(home, "/data/covariates/ensemble/chl_ensemble_sd+ba_surface_depth_5.0_perc_ssp245.nc")))
 
-# Trim years we have chlorophyll for.
-d <- d |>
-  filter(year %in% unique(chl_tibble$year)) # We loose 13% of the data by including chl.
+ch_tibble5 <- read_trim_nc(paste0(home, "/data/covariates/ensemble/chl_ensemble_sd+ba_surface_depth_5.0_perc_ssp245.nc"))
 
-# Loop through all year combos, extract the chl at the data locations
-d <- extractCovariateAtLocation(
-  "chl",
-  d,
-  chl_tibble,
-  changesYearly = 1,
-  "chl",
-  messages = 1
-)
+# Loop through all year combos, extract the temperatures at the data locations
+ch_list <- list()
+
+for (i in unique(d_temp$year)) {
+  d_sub <- filter(d_temp, year == i)
+  ch_tibble_sub <- filter(ch_tibble5, year == i)
+
+  # Convert to raster
+  ch_raster <- as_spatraster(ch_tibble_sub,
+    xycols = 3:4,
+    crs = "WGS84", digits = 3
+  )
+
+  # Extract from raster
+  d_sub$chl <- terra::extract(
+    ch_raster$chl,
+    d_sub |> dplyr::select(lon, lat)
+  )$chl
+
+  # Save
+  ch_list[[i]] <- d_sub
+}
+
+d_chl <- bind_rows(ch_list)
+
+# Convert to mg/m3
+d_chl$chl <- d_chl$chl*1000000
+
+d <- d_chl
 ```
 
 ### Satellite derived depth
@@ -505,58 +510,11 @@ plot_map +
 d <- d |> tidylog::filter(depth > 0)
 ```
 
-## Check covariates 
-
-```{r}
-# Get the proportion of observations not assigned with a covariate value at prior steps
-colMeans(is.na(d))
-```
-
-## Plot response variables
-
-```{r}
-#| message: false
-#| warning: false
-d |>
-  summarise(n = n(), .by = species) |>
-  arrange(desc(n))
-
-# Distribution of data
-ggplot(d, aes(length_mm)) +
-  geom_histogram() +
-  facet_wrap(~species, scales = "free")
-
-# Effect of day of the year
-ggplot(d, aes(yday, length_mm)) +
-  geom_point(size = 0.4, alpha = 0.4) +
-  geom_smooth(method = "lm") +
-  facet_wrap(~species, scales = "free")
-
-# Effect of year
-ggplot(d, aes(year, length_mm)) +
-  geom_point(size = 0.4, alpha = 0.4) +
-  geom_smooth(method = "lm") +
-  facet_wrap(~species, scales = "free")
-
-# Effect of temperature
-ggplot(d, aes(temp, length_mm)) +
-  geom_point(size = 0.4, alpha = 0.4) +
-  geom_smooth(method = "lm") +
-  # geom_smooth() +
-  facet_wrap(~species, scales = "free")
-
-# Effect of chlorophyll
-ggplot(d, aes(chl, length_mm)) +
-  geom_point(size = 0.4, alpha = 0.4) +
-  geom_smooth(method = "lm") +
-  # geom_smooth() +
-  facet_wrap(~species, scales = "free")
-```
-
 ## Save data
 
 ```{r}
-d <- d |> drop_na(temp)
+d <- d |> drop_na(temp) |> drop_na(chl)
 
 write_csv(d, paste0(home, "/data/clean/larval_size.csv"))
 ```
+

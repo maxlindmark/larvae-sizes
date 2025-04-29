@@ -13,6 +13,7 @@ knitr:
     fig.align: center
     out-width: 100%
 editor: source
+cache: false
 ---
 
 ```{r load libraries}
@@ -25,6 +26,7 @@ library(tidylog)
 library(sdmTMB)
 library(patchwork)
 library(viridis)
+library(concaveman)
 library(RColorBrewer)
 library(modelr)
 library(ggstats)
@@ -60,6 +62,7 @@ d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv")) |>
   mutate(temp_sq = temp_sc*temp_sc) |> 
   filter(!species == "Anguilla anguilla") |> 
   filter(!species == "Sardina pilchardus") |> 
+  filter(!species == "Agonus cataphractus") |> 
   as.data.frame() |> 
   mutate(across(everything(), as.vector))
 
@@ -74,7 +77,6 @@ pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) |>
     temp_sc = (temp - mean(d$temp, na.rm = TRUE)) / sd(d$temp, na.rm = TRUE),
     temp_sq = temp_sc*temp_sc,
     chl_sc = (chl - mean(chl, na.rm = TRUE)) / sd(chl, na.rm = TRUE),
-    depth_sc = as.numeric(scale(depth)),
     year_f = as.factor(year),
     year_ct = 0,
     yday_ct = 0
@@ -83,244 +85,38 @@ pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) |>
   filter(keep == "Y") |>
   dplyr::select(-keep)
 
+nrow(d)
+sd(d$temp)
+
 # Read density data
 b <- readr::read_csv(paste0(home, "/data/clean/larval_density.csv")) |>
   drop_na(no_m2) |> 
-  mutate(year_f  = as.factor(year),
-         depth_sc = (depth - mean(pred_grid$depth, na.rm = TRUE))/sd(pred_grid$depth, na.rm = TRUE)) |> 
+  mutate(year_f  = as.factor(year)) |> 
   mutate(sum_no_m2 = sum(no_m2), .by = c(year, species)) |> 
   filter(sum_no_m2 > 0)
 
 length(unique(b$haul_id))
 ```
 
-Plot covariates
+## Exploratory plots
 
 ```{r}
-coul <- brewer.pal(11, "Spectral")
-coul <- colorRampPalette(coul)(length(unique(d$species)))
+d |> 
+  ggplot(aes(chl_sc, length_mm)) + 
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "gam", formula = y~s(x, k=3)) +
+  geom_smooth(method = "lm", color = "tomato") + 
+  facet_wrap(~species, scales = "free")
 
-d <- d |> 
-  mutate(species2 = fct_recode(species,
-                               "A. cataphractus" = "Agonus cataphractus",
-                               "A. minuta" = "Aphia minuta",
-                               "C. ascanii" = "Chirolophis ascanii",
-                               "C. harengus" = "Clupea harengus",
-                               "C. linearis" = "Crystallogobius linearis",
-                               "M. kitt" = "Microstomus kitt",
-                               "M. scorpius" = "Myoxocephalus scorpius",
-                               "P. gunnellus" = "Pholis gunnellus",
-                               "S. rostellatus" = "Syngnathus rostellatus"))
-
-# First gather the elements common to all the covariate plots
-covMapTheme <- plot_map +
-  theme(
-    legend.position.inside = c(0.25, 0.11),
-    legend.direction = "horizontal",
-    legend.key.width = unit(0.35, "cm"), # Decreased to fit multicovariates
-    legend.key.height = unit(0.2, "cm"),
-    legend.text = element_text(size = 7),
-    legend.title = element_text(size = 8)
-  ) +
-  geom_sf() +
-  annotate("text",
-    label = "Sweden", x = xmin2 + 0.95 * xrange, y = ymin2 + 0.75 * yrange,
-    color = "gray50", size = 2.5
-  ) +
-  annotate("text",
-    label = "Norway", x = xmin2 + 0.08 * xrange, y = ymin2 + 0.95 * yrange,
-    color = "gray50", size = 2.5
-  ) +
-  annotate("text",
-    label = "Denmark", x = xmin2 + 0.42 * xrange, y = ymin2 + 0.45 * yrange,
-    color = "gray50", size = 2.5
-  ) +
-  guides(fill = guide_colorbar(
-    position = "inside",
-    title.position = "top",
-    title.hjust = 0.5
-  )) +
-  NULL
-
-# Generate the data and covariate maps
-p_dat <- covMapTheme +
-  geom_point(
-    data = d, aes(X * 1000, Y * 1000, color = species2),
-    size = 0.5, alpha = 1
-  ) +
-  #scale_color_manual(values = coul, name = "Species") +
-  scale_color_brewer(palette = "Paired", name = "Species") +
-  guides(color = "none") +
-  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  annotation_scale(bar_cols = c("grey30", "white"), height = unit(0.1, "cm")) +
-  annotation_north_arrow(
-    location = "tr", which_north = "true", height = unit(0.85, "cm"),
-    width = unit(0.85, "cm"), pad_x = unit(0.1, "in"), pad_y = unit(0.1, "in"),
-    style = north_arrow_fancy_orienteering(
-      fill = c("grey40", "white"),
-      line_col = "grey20"
-    )
-  )
-
-size_plot <- ggplot(d, aes(length_mm, fill = species2)) +
-  geom_histogram() +
-  #scale_fill_manual(values = coul, name = "Species") +
-  scale_fill_brewer(palette = "Paired", name = "Species") +
-  coord_cartesian(expand = 0) +
-  labs(y = "Count", x = "Length (mm)") +
-  theme(legend.position = "bottom",
-        legend.key.size = unit(0.25, "cm"),
-        legend.spacing.y = unit(0, "pt"),
-        legend.margin = margin(0, 0, 0, 0),
-        legend.title = element_blank(),
-        legend.text = element_text(face = "italic", size = 7),
-        ) +
-  guides(fill = guide_legend(ncol = 3)) +
-  annotate("text", label = "(b)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4)
-
-p_dat | free(size_plot)
-
-# Save
-ggsave(paste0(home, "/figures/data_plot.pdf"), width = 17, height = 11, units = "cm")
-
-
-# Plot covariates
-# For batyhymetry
-pred_grid_depth <-
-  bind_rows(
-    read_csv(paste0(home, "/data/clean/pred_grid.csv"))
-  ) |>
-  filter(year == 1999) |>
-  mutate(depth = round(depth)) |>
-  distinct(X, Y, depth) |>
-  summarise(depth = mean(depth), .by = c(X, Y))
-
-# For labels
-skag_kat_border <- data.frame(lat1 = 57.75420, 
-                              lat2 = 57.91694673025835,
-                              lon1 = 10.61630,
-                              lon2 = 11.502651981474733) 
-
-skag_kat_border <- skag_kat_border |> 
-  add_utm_columns(utm_names = c("X1", "Y1"),
-                  ll_names = c("lon1", "lat1")) |> 
-  add_utm_columns(utm_names = c("X2", "Y2"),
-                  ll_names = c("lon2", "lat2"))
-
-
-ann_text <- data.frame(year = 2012, 
-                       label = c("Skagerrak", "Kattegat"),
-                       lon = c(10.55, 11.2),
-                       lat = c(58.1, 57.5)) |> 
-  add_utm_columns(ll_names = c("lon", "lat"))
-
-
-p_tempCovMap <- covMapTheme +
-  geom_raster(
-    data = pred_grid |>
-      group_by(X, Y) |>
-      summarise(mean_temp = mean(temp)),
-    aes(X * 1000, Y * 1000, fill = mean_temp)
-  ) +
-  geom_sf() + 
-  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  # geom_contour(
-  #   data = pred_grid_depth, aes(X * 1000, Y * 1000,
-  #     z = depth,
-  #     #colour = after_stat(level)
-  #   ),
-  #   bins = 10, alpha = 1, linewidth = 0.2, color = "white"
-  # ) +
-  scale_fill_viridis(option = "magma", name = "Temperature (°C)") +
-  guides(color = "none") +
-  geom_segment(data = skag_kat_border, aes(x = X1*1000, xend = X2*1000,
-                                           y = Y1*1000, yend = Y2*1000),
-               alpha = 0.75, linetype = 3, color = "white") + 
-  geom_text(data = ann_text, aes(x = X*1000, y = Y*1000, label = label),
-            color = "white", size = 2.7)
-  
-p_chlCovMap <- covMapTheme +
-  geom_raster(
-    data = pred_grid |>
-      group_by(X, Y) |>
-      summarise(mean_chl = mean(chl)),
-    aes(X * 1000, Y * 1000, fill = mean_chl)
-  ) +
-  geom_sf() + 
-  annotate("text", label = "(b)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  scale_fill_viridis(name = expression("Chl (mg/l"^3 * ")")) +
-  theme(
-    axis.text.y = element_blank(),
-    axis.title.y = element_blank()
-  ) +
-  # geom_contour(
-  #   data = pred_grid_depth, aes(X * 1000, Y * 1000,
-  #     z = depth,
-  #     #colour = after_stat(level)
-  #   ),
-  #   bins = 10, alpha = 1, linewidth = 0.2, color = "white"
-  # ) +
-  guides(color = "none")
-
-
-# Plot over time
-trends <- pred_grid |>
-  pivot_longer(c(temp, chl), names_to = "var") |>
-  mutate(var = fct_recode(var,
-    "Temperature" = "temp",
-    "Chlorophyll" = "chl"
-  )) |>
-  summarise(value = mean(value), .by = c(var, year))
-
-tt <- trends |>
-  filter(var == "Temperature") |>
-  ggplot(aes(year, value)) +
-  geom_point(color = "grey30") +
-  geom_smooth(method = "lm", color = "tomato") +
-  labs(x = "Year", y = "Temperature (°C)") +
-  annotate("text", label = "(c)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4)
-
-ct <- trends |>
-  filter(var == "Chlorophyll") |>
-  ggplot(aes(year, value)) +
-  geom_point(color = "grey30") +
-  geom_smooth(method = "lm", color = "tomato") +
-  labs(x = "Year", y = expression("Chl (mg/l"^3 * ")")) +
-  annotate("text", label = "(d)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4)
-
-(p_tempCovMap + p_chlCovMap) / (tt + ct) +
-  plot_layout(heights = c(1, 0.65))
-
-# Save
-ggsave(paste0(home, "/figures/covar_map.pdf"), width = 17, height = 17, units = "cm")
+d |> 
+  ggplot(aes(temp_sc, length_mm)) + 
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "gam", formula = y~s(x, k=3)) +
+  geom_smooth(method = "lm", color = "tomato") + 
+  facet_wrap(~species, scales = "free")
 ```
 
 ## Fit models by species
-
-```{r}
-  # db |>
-  #   mutate(pres = ifelse(no_m2 > 0, 1, 0)) |>
-  #   ggplot(aes(X, Y, color = pres)) +
-  #   geom_point() +
-  #   facet_wrap(~year)
-  # hist(db$no_m2)
-  # summary(db$no_m2)
-  # db |>
-  #   ggplot(aes(X, Y, color = no_m2)) +
-  #   scale_color_viridis(trans = "sqrt") +
-  #   geom_point() +
-  #   facet_wrap(~year)
-  # dd |>
-  #   ggplot(aes(X, Y)) +
-  #   geom_point() +
-  #   facet_wrap(~year)
-```
 
 ```{r}
 pars_list <- list()
@@ -333,6 +129,9 @@ genq_list <- list()
 index_list <- list()
 dens_index_list <- list()
 cog_list <- list()
+index_sims_list <- list()
+
+i <- unique(d$species)[2]
 
 for (i in unique(d$species)) {
   print(i)
@@ -340,77 +139,39 @@ for (i in unique(d$species)) {
   dd <- d |> filter(species == i)
   db <- b |> filter(species == i)
 
-  if (unique(dd$species) %in% c(
-    "Ammodytidae", "Crystallogobius linearis",
-    "Syngnathus rostellatus", "Aphia minuta"
-  )) {
-
-    mesh <- make_mesh(dd, xy_cols = c("X", "Y"), cutoff = 8)
-    mesh_dens <- make_mesh(db, xy_cols = c("X", "Y"), cutoff = 8)
-
-    ggplot() +
-      inlabru::gg(mesh$mesh) +
-      coord_fixed() +
-      geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
-      annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) +
-      labs(x = "Easting (km)", y = "Northing (km)")
-
-    ggsave(paste0(home, paste0("/figures/supp/size_mesh_", i, ".pdf")), width = 14, height = 14, units = "cm")
-
-    mlength <- sdmTMB(length_mm ~ temp_sc + chl_sc + year_f + yday_ct,
-      data = dd,
-      mesh = mesh,
-      family = gengamma(link = "log"),
-      spatiotemporal = "off",
-      spatial = "on",
-      time = "year")
-
-    mdens <- sdmTMB(no_m2 ~ year_f,
-      data = db,
-      mesh = mesh_dens,
-      family = delta_gamma(type = "poisson-link"),
-      spatiotemporal = "iid",
-      spatial = "on",
-      time = "year")
-    
-    mlength <- run_extra_optimization(mlength)
-  } else {
-
-    mesh <- make_mesh(dd, xy_cols = c("X", "Y"), cutoff = 4)
-    mesh_dens <- make_mesh(db, xy_cols = c("X", "Y"), cutoff = 4)
+  mesh <- make_mesh(dd, xy_cols = c("X", "Y"), cutoff = 8)
+  mesh_dens <- make_mesh(db, xy_cols = c("X", "Y"), cutoff = 4)
   
-    ggplot() +
-      inlabru::gg(mesh$mesh) +
-      coord_fixed() +
-      geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
-      annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) +
-      labs(x = "Easting (km)", y = "Northing (km)")
+  ggplot() +
+    inlabru::gg(mesh$mesh) +
+    coord_fixed() +
+    geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
+    annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) +
+    labs(x = "Easting (km)", y = "Northing (km)")
 
-    ggsave(paste0(home, paste("/figures/supp/size_mesh_", i, "_.pdf")), width = 14, height = 14, units = "cm")
+  ggsave(paste0(home, paste("/figures/supp/size_mesh_", i, "_.pdf")), width = 14, height = 14, units = "cm")
 
-    mlength <- sdmTMB(length_mm ~ temp_sc + chl_sc + year_f + yday_ct,
-      data = dd,
-      mesh = mesh,
-      family = gengamma(link = "log"),
-      spatiotemporal = "off",
-      spatial = "on",
-      time = "year")
-    
-    mlength <- run_extra_optimization(mlength)
-    
-    mdens <- sdmTMB(no_m2 ~ year_f,
-      data = db,
-      mesh = mesh_dens,
-      family = delta_gamma(type = "poisson-link"),
-      spatiotemporal = "iid",
-      spatial = "on",
-      time = "year")
-
-  }
-
+  mlength <- sdmTMB(
+    length_mm ~ temp_sc + chl_sc + year_f + yday_ct,
+    data = dd,
+    mesh = mesh,
+    family = gengamma(link = "log"),
+    spatiotemporal = "iid",
+    spatial = "off",
+    time = "year")
+  
+  mdens <- sdmTMB(
+    no_m2 ~ year_f,
+    data = db,
+    mesh = mesh_dens,
+    family = tweedie(),
+    spatiotemporal = "iid",
+    spatial = "on",
+    time = "year")
+ 
   print(mlength)
   sanity(mlength)
-  
+
   print(mdens)
   sanity(mdens)
   
@@ -437,10 +198,8 @@ for (i in unique(d$species)) {
   pdens <- predict(mdens, 
                    newdata = pred_grid |>
                      filter(year %in% unique(db$year_f))) |> 
-    mutate(pred_dens = exp(est1 + est2)) |> 
-    dplyr::select(-est_non_rf1, -est_non_rf2, -est_rf2, -est_rf2,
-                  -omega_s1, -omega_s2, #-epsilon_st1, -epsilon_st2,
-                  -est1, -est2)
+    mutate(pred_dens = exp(est)) |> 
+    dplyr::select(-est_non_rf, -est_rf, -omega_s, -est)
   
   spatial_list[[i]] <- p |> mutate(species = i)
   spatial_density_list[[i]] <- pdens |> mutate(species = i)
@@ -484,29 +243,35 @@ for (i in unique(d$species)) {
   
   index_list[[i]] <- ind |> mutate(species = i)
   
+  # Weighted index with sims... 
+  p_ind_sim <- predict(mlength,
+    nsim = 500,
+    newdata = pdens |> filter(year %in% unique(dd$year)),
+    return_tmb_object = TRUE
+  )
+    
+  ind_w_sims <- get_index_sims(p_ind_sim,
+    area = p_ind$data$pred_dens,
+    return_sims = TRUE
+  ) |> 
+     left_join(weight_sum) |> 
+     mutate(.value = .value / pred_dens_sum)
+  
+  index_sims_list[[i]] <- ind_w_sims |> mutate(species = i)
+  
   # Get COG
   cog_list[[i]] <- get_cog(p_dens, format = "wide", bias_correct = FALSE) |> mutate(species = i)
   
   # Get ranges
   range_length <- tidy(mlength, effects = "ran_pars") |>
     filter(term == "range") |> 
-    mutate(cutoff = ifelse(i %in% c(
-      "Ammodytidae", "Crystallogobius linearis",
-      "Syngnathus rostellatus", "Aphia minuta"
-    ),
-    8, 4
-    )) |> 
-    mutate(model = "length")
+    mutate(cutoff = 4,
+           model = "length")
   
   range_dens <- tidy(mdens, effects = "ran_pars") |>
     filter(term == "range") |> 
-    mutate(cutoff = ifelse(i %in% c(
-      "Ammodytidae", "Crystallogobius linearis",
-      "Syngnathus rostellatus", "Aphia minuta"
-    ),
-    8, 4
-    )) |> 
-    mutate(model = "density")
+    mutate(cutoff = 4,
+           model = "density")
 
   range <- bind_rows(range_length, range_dens)
   
@@ -535,6 +300,7 @@ genq <- bind_rows(genq_list)
 index <- bind_rows(index_list)
 dens_index <- bind_rows(dens_index_list)
 cog <- bind_rows(cog_list)
+index_sims <- bind_rows(index_sims_list)
 
 write_csv(cog, paste0(home, "/output/cog.csv"))
 write_csv(pars, paste0(home, "/output/pars.csv"))
@@ -546,399 +312,5 @@ write_csv(range, paste0(home, "/output/range.csv"))
 write_csv(genq, paste0(home, "/output/genq.csv"))
 write_csv(index, paste0(home, "/output/index.csv"))
 write_csv(dens_index, paste0(home, "/output/dens_index.csv"))
+write_csv(index_sims, paste0(home, "/output/index_sims.csv"))
 ```
-
-```{r}
-cog <- read_csv(paste0(home, "/output/cog.csv"))
-pars <- read_csv(paste0(home, "/output/pars.csv"))
-res <- read_csv(paste0(home, "/output/res.csv"))
-res_dens <- read_csv(paste0(home, "/output/res_dens.csv"))
-spatial <- read_csv(paste0(home, "/output/spatial.csv"))
-spatial_density <- read_csv(paste0(home, "/output/spatial_density.csv"))
-range <- read_csv(paste0(home, "/output/range.csv"))
-genq <- read_csv(paste0(home, "/output/genq.csv"))
-index <- read_csv(paste0(home, "/output/index.csv"))
-dens_index <- read_csv(paste0(home, "/output/dens_index.csv"))
-```
-
-### Plot residuals and other things
-
-```{r}
-# Plot residuals
-ggplot(res, aes(observed, expected)) +
-  geom_point(color = "grey30", shape = 21, size = 0.5) +
-  geom_abline(col = "tomato3", linewidth = 0.6) +
-  theme(aspect.ratio = 1) +
-  labs(x = "Observed", y = "Expected") +
-  facet_wrap(~species, scales = "free")
-
-ggsave(paste0(home, "/figures/supp/residuals.pdf"), width = 20, height = 20, units = "cm")
-
-# Density residuals
-ggplot(res_dens, aes(observed, expected)) +
-  geom_point(color = "grey30", shape = 21, size = 0.5) +
-  geom_abline(col = "tomato3", linewidth = 0.6) +
-  theme(aspect.ratio = 1) +
-  labs(x = "Observed", y = "Expected") +
-  facet_wrap(~species, scales = "free")
-
-ggsave(paste0(home, "/figures/supp/residuals_density.pdf"), width = 20, height = 20, units = "cm")
-
-# Plot range
-ggplot(range, aes(estimate, reorder(species, estimate))) +
-  geom_point() +
-  geom_vline(xintercept = 5, alpha = 0.5, linetype = 2) +
-  facet_wrap(~cutoff)
-
-ggplot(range, aes(estimate / cutoff, reorder(species, estimate))) +
-  geom_point() +
-  geom_vline(xintercept = 2, alpha = 0.5, linetype = 2)
-
-# Plot generalized gamma
-# The lognormal occurs as the internal parameter gengamma_Q approaches 0
-genq |>
-  filter(term == "gengamma_Q") |>
-  ggplot(aes(estimate, species)) +
-  facet_wrap(~term, ncol = 1) +
-  geom_point() +
-  geom_vline(xintercept = 0, alpha = 0.5, linetype = 2)
-
-# If Q matches phi the distribution should be the gamma.
-genq |>
-  ggplot(aes(estimate, species, color = term)) +
-  geom_point()
-```
-
-### Coefficients
-
-```{r}
-#| message: false
-#| warning: false
-
-pars_order <- pars |>
-  filter(term %in% c("temp_sc")) |>
-  arrange(estimate)
-
-labels <- data.frame(
-  life_stage = rep(c("Larvae", "Adult"), each = 3),
-  term = rep(c("Temperature", "Day of the year", "Chlorophyll"), 2),
-  group = c("(a)", "(b)", "(c)", "(d)", "(e)", "(f)")
-  )
-
-pars |>
-  filter(term %in% c("temp_sc", "chl_sc", "yday_ct")) |>
-  mutate(life_stage = ifelse(species %in% c("Aphia minuta", 
-                                            "Crystallogobius linearis",
-                                            "Pomatoschistus sp",
-                                            "Syngnathus rostellatus"), 
-                             "Adult", "Larvae")) |> 
-  mutate(term = fct_recode(term,
-    "Day of the year" = "yday_ct",
-    "Temperature" = "temp_sc",
-    "Chlorophyll" = "chl_sc"
-  )) |>
-  mutate(
-    sign = ifelse(estimate > 0, "pos", "neg"),
-    sig = ifelse(estimate > 0 & conf.low > 0, "sig", "not sig"),
-    sig = ifelse(estimate < 0 & conf.high < 0, "sig", sig)
-  ) |>
-  ggplot(aes(estimate, factor(species, levels = pars_order$species), fill = sig, color = sign, shape = sig)) +
-  #facet_wrap(~ factor(term, levels = c("Temperature", "Day of the year", "Chlorophyll"))) +
-  ggh4x::facet_grid2(factor(life_stage, levels = c("Larvae", "Adult")) ~ factor(term, levels = c("Temperature", "Day of the year", "Chlorophyll")),
-                     scales = "free_y") +
-  geom_point(fill = NA) +
-  scale_shape_manual(values = c(21, 19)) +
-  geom_errorbar(aes(xmin = conf.low, xmax = conf.high),
-    width = 0, alpha = 0.3
-  ) +
-  geom_vline(xintercept = 0, alpha = 0.3, linetype = 2, linewidth = 0.25) +
-  theme(axis.text.y = element_text(face = "italic")) +
-  labs(y = "Species", x = "Slope") +
-  scale_color_brewer(palette = "Dark2", direction = -1) +
-  scale_fill_brewer(palette = "Dark2", direction = -1) +
-  guides(color = "none", shape = "none") +
-  geom_stripped_rows(aes(y = species), inherit.aes = FALSE) +
-  geom_text(
-    data = labels,
-    color = "gray40",
-    aes(x = Inf, y = Inf, label = group),
-    size = 3,
-    inherit.aes = FALSE,
-    vjust = 1.5, 
-    hjust = 1.5
-  ) +
-  theme(legend.position = "bottom")
-
-ggsave(paste0(home, "/figures/coefs.pdf"), width = 17, height = 10, units = "cm")
-```
-
-## Spatial plots and indices
-
-```{r}
-index |>
-  ggplot() + 
-  geom_ribbon(aes(year, est, ymin = lwr, ymax = upr, fill = type), alpha = 0.5) + 
-  facet_wrap(~species, ncol = 6, scales = "free")
-
-trends <- index |>
-  filter(type == "weighted") |> 
-  rename(ind = est, 
-         ind_lwr = lwr,
-         ind_upr = upr,
-         ind_se = se) |> 
-  group_by(species) |> 
-  nest() |> 
-  mutate(
-    # Fit models
-    model = map(data, ~sdmTMB(
-      ind ~ s(year, k = 8),
-      family = lognormal(),
-      data = .x,
-      spatial = "off"
-    )),
-    # Get predictions with CIs
-    preds = map(model, ~predict(.x, se_fit = TRUE) |> 
-      mutate(
-        lwr = exp(est - 1.96 * est_se),
-        upr = exp(est + 1.96 * est_se)
-      ))
-  ) |> 
-  select(species, preds) |> 
-  unnest(preds)
-
-ggplot(trends, aes(year, exp(est))) +
-  facet_wrap(~species, scales = "free") +
-  geom_point(aes(year, ind), alpha = 0.8, color = "steelblue") +
-  geom_errorbar(aes(ymin = ind_lwr, ymax = ind_upr), color = "steelblue", width = 0, alpha = 0.5) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.1) +
-  geom_line(color = "tomato", alpha = 0.8) +
-  theme(strip.text = element_text(face = "italic", size = 7.3)) +
-  labs(x = "Year", y = "Length (mm)")
-
-ggsave(paste0(home, "/figures/size_index.pdf"), width = 18, height = 13, units = "cm")
-
-trends |>
-  filter(type == "weighted") |> 
-  ungroup() |>
-  mutate(year2 = ifelse(year == min(year), "min", NA), .by = species) |>
-  mutate(year2 = ifelse(year == max(year), "max", year2), .by = species) |>
-  filter(year2 %in% c("min", "max")) |>
-  dplyr::select(year2, species, est) |>
-  pivot_wider(values_from = est, names_from = year2) |>
-  mutate(percent = ((`max` - `min`) / abs(`min`)) * 100) |>
-  arrange(desc(percent)) |>
-  ggplot(aes(percent, reorder(species, percent))) +
-  geom_vline(xintercept = 0, alpha = 0.5, linetype = 2) +
-  geom_point(color = "steelblue") +
-  labs(x = "Percent change", y = "Species") +
-  theme(axis.text.y = element_text(face = "italic"))
-
-# ggsave(paste0(home, "/figures/percent_change.pdf"), width = 12, height = 9, units = "cm")
-
-# density index
-trends_dens <- dens_index |>
-  rename(ind = est, 
-         ind_lwr = lwr,
-         ind_upr = upr,
-         ind_se = se) |> 
-  group_by(species) |> 
-  nest() |> 
-  mutate(
-    # Fit models
-    model = map(data, ~sdmTMB(
-      ind ~ s(year, k = 8),
-      family = lognormal(),
-      data = .x,
-      spatial = "off"
-    )),
-    # Get predictions with CIs
-    preds = map(model, ~predict(.x, se_fit = TRUE) |> 
-      mutate(
-        lwr = exp(est - 1.96 * est_se),
-        upr = exp(est + 1.96 * est_se)
-      ))
-  ) |> 
-  select(species, preds) |> 
-  unnest(preds)
-
-ggplot(trends_dens, aes(year, exp(est))) +
-  facet_wrap(~species, scales = "free") +
-  geom_point(aes(year, ind), alpha = 0.8, color = "steelblue") +
-  geom_errorbar(aes(ymin = ind_lwr, ymax = ind_upr), color = "steelblue", width = 0, alpha = 0.5) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.1) +
-  geom_line(color = "tomato", alpha = 0.8) +
-  theme(strip.text = element_text(face = "italic", size = 7.3)) +
-  labs(x = "Year", y = "Relative abundance")
-
-ggsave(paste0(home, "/figures/density_index.pdf"), width = 18, height = 13, units = "cm")
-
-# Length
-plot_map_fc +
-  geom_raster(
-    data = spatial |>
-      summarise(est = mean(exp(est)), .by = c(X, Y, species)) |> 
-      mutate(est_sc = est / mean(est), .by = species),
-    aes(X * 1000, Y * 1000, fill = est_sc)
-  ) +
-  scale_fill_gradient2(midpoint = 1) +
-  facet_wrap(~species) +
-  labs(fill = "Scaled size") +
-  theme(strip.text = element_text(face = "italic")) + 
-  geom_sf()
-
-ggsave(paste0(home, "/figures/spatial_size.pdf"), width = 17, height = 17, units = "cm")
-
-plot_map_fc +
-  geom_raster(
-    data = spatial |> filter(species == "Pomatoschistus sp"),
-    aes(X * 1000, Y * 1000, fill = exp(est))
-  ) +
-  scale_fill_viridis(trans = "sqrt") +
-  facet_wrap(~year) +
-  labs(fill = "Size (mm)") +
-  geom_sf()
-
-ggsave(paste0(home, "/figures/supp/spatial_size_pomatoschistus.pdf"), width = 17, height = 17, units = "cm")
-
-plot_map_fc +
-  geom_raster(
-    data = spatial |> filter(species == "Ammodytidae"),
-    aes(X * 1000, Y * 1000, fill = exp(est))
-  ) +
-  scale_fill_viridis(trans = "sqrt") +
-  facet_wrap(~year) +
-  labs(fill = "Size (mm)") +
-  geom_sf()
-
-ggsave(paste0(home, "/figures/supp/spatial_size_ammodytidae.pdf"), width = 17, height = 17, units = "cm")
-
-# Density
-plot_map_fc +
-  geom_raster(
-    data = spatial_density |>
-      summarise(pred_dens = mean(pred_dens), .by = c(X, Y, species)) |> 
-      mutate(est_sc = pred_dens / mean(pred_dens), .by = species),
-    aes(X * 1000, Y * 1000, fill = est_sc)
-  ) +
-  #scale_fill_viridis(trans = "sqrt") +
-  scale_fill_gradient2(midpoint = 1, trans = "sqrt") +
-  facet_wrap(~species) +
-  labs(fill = "Scaled density") +
-  geom_sf()
-
-ggsave(paste0(home, "/figures/spatial_density.pdf"), width = 17, height = 17, units = "cm")
-
-plot_map_fc +
-  geom_raster(
-    data = spatial_density |> filter(species == "Pholis gunnellus"),
-    aes(X * 1000, Y * 1000, fill = pred_dens)
-  ) +
-  scale_fill_viridis(trans = "sqrt") +
-  facet_wrap(~year) +
-  labs(fill = expression("Density (no/m"^2 * ")")) +
-  geom_sf()
-
-ggsave(paste0(home, "/figures/supp/spatial_density_pholis.pdf"), width = 17, height = 17, units = "cm")
-
-plot_map_fc +
-  geom_raster(
-    data = spatial_density |> filter(species == "Clupea harengus"),
-    aes(X * 1000, Y * 1000, fill = pred_dens)
-  ) +
-  scale_fill_viridis(trans = "sqrt") +
-  facet_wrap(~year) +
-  labs(fill = expression("Density (no/m"^2 * ")")) +
-  geom_sf()
-
-ggsave(paste0(home, "/figures/supp/spatial_density_clupea.pdf"), width = 17, height = 17, units = "cm")
-```
-
-## COG
-
-```{r}
-cog |> 
-  summarise(min_y = min(est_y),
-            max_y = max(est_y),
-            .by = species) |> 
-  mutate(diff = max_y - min_y) |> 
-  arrange(desc(diff))
-
-options(scipen = 999)
-
-cog |> 
-  summarise(min_x = min(est_x),
-            max_x = max(est_x),
-            .by = species) |> 
-  mutate(diff = round(max_x - min_x, digits = 3)) |> 
-  arrange(desc(diff)) |> 
-  as.data.frame()
-
-ggplot(cog, aes(year, est_x)) + 
-  facet_wrap(~species, scales = "free") + 
-  geom_line() +
-  stat_smooth(method = "lm")
-
-ggplot(cog, aes(year, est_y)) + 
-  facet_wrap(~species) + 
-  geom_line() +
-  stat_smooth(method = "lm")
-
-plot_map_fc +
-  geom_point(data = cog, aes(est_x*1000, est_y*1000, colour = year)) +
-  facet_wrap(~species) +
-  theme(strip.text.x.top = element_text(size = 8)) +
-  geom_linerange(data = cog, aes(est_x*1000, est_y*1000, xmin = lwr_x*1000, xmax = upr_x*1000, colour = year), alpha = 0.5) +
-  geom_linerange(data = cog, aes(est_x*1000, est_y*1000, ymin = lwr_y*1000, ymax = upr_y*1000, colour = year), alpha = 0.5) +
-  scale_colour_viridis(option = "D", name = "Year") + 
-  xlim(520000, 672900) +
-  ylim(6275000, 6455000)
-  
-ggsave(paste0(home, "/figures/supp/cog.pdf"), width = 17, height = 17, units = "cm")
-```
-
-
-## Percent change in index
-
-```{r}
-trends_change <- trends |>
-  filter(type == "weighted") |> 
-  filter(year >= 2012) |> 
-  ungroup() |>
-  mutate(year2 = ifelse(year == min(year), "min", NA), .by = species) |>
-  mutate(year2 = ifelse(year == max(year), "max", year2), .by = species) |>
-  filter(year2 %in% c("min", "max")) |>
-  mutate(est = exp(est)) |> 
-  dplyr::select(year2, species, est) |>
-  pivot_wider(values_from = est, names_from = year2) |>
-  mutate(percent = ((`max` - `min`) / abs(`min`)) * 100) |>
-  arrange(desc(percent))
-
-trends_change
-
-trends_change |> 
-  summarise(mean = mean(percent),
-            max = max(percent),
-            min = min(percent),
-            median = median(percent))
-
-trends_dens_change <- trends_dens |>
-  #filter(year >= 2012) |> 
-  ungroup() |>
-  mutate(year2 = ifelse(year == min(year), "min", NA), .by = species) |>
-  mutate(year2 = ifelse(year == max(year), "max", year2), .by = species) |>
-  filter(year2 %in% c("min", "max")) |>
-  mutate(est = exp(est)) |> 
-  dplyr::select(year2, species, est) |>
-  pivot_wider(values_from = est, names_from = year2) |>
-  mutate(percent = ((`max` - `min`) / abs(`min`)) * 100) |>
-  arrange(desc(percent)) 
-
-trends_dens_change
-
-trends_dens_change |> 
-  summarise(mean = mean(percent),
-            max = max(percent),
-            min = min(percent),
-            median = median(percent))
-```
-
