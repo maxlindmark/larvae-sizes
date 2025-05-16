@@ -66,7 +66,30 @@ d <- readr::read_csv(paste0(home, "/data/clean/larval_size.csv")) |>
   as.data.frame() |> 
   mutate(across(everything(), as.vector))
 
+d |> 
+  filter(species == "Clupea harengus") |> 
+  summarise(min = min(length_mm), 
+            mean = mean(length_mm),
+            max = max(length_mm))
+
+d |> 
+  filter(species == "Clupea harengus") |> 
+  ggplot(aes(length_mm)) +
+  geom_histogram()
+
+t <- d |> 
+  filter(species == "Clupea harengus") |> 
+  filter(length_mm >= 19)
+
 #d <- lapply(d, remove_attributes)
+# d |> 
+#   summarise(n_years = length(unique(year)), .by = species) |> 
+#   arrange(n_years)
+# d |> 
+#   summarise(n_per_year = n(), .by = c(year, species)) |> 
+#   arrange(n_per_year) |> 
+#   head(10)
+nrow(d)
 
 # Load prediction grid
 pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) |>
@@ -85,7 +108,6 @@ pred_grid <- readr::read_csv(paste0(home, "/data/clean/pred_grid.csv")) |>
   filter(keep == "Y") |>
   dplyr::select(-keep)
 
-nrow(d)
 sd(d$temp)
 
 # Read density data
@@ -146,7 +168,6 @@ for (i in unique(d$species)) {
     inlabru::gg(mesh$mesh) +
     coord_fixed() +
     geom_point(aes(X, Y), data = dd, alpha = 0.2, size = 0.5) +
-    annotate("text", -Inf, Inf, label = paste("n knots = ", mesh$mesh$n), hjust = -0.1, vjust = 2) +
     labs(x = "Easting (km)", y = "Northing (km)")
 
   ggsave(paste0(home, paste("/figures/supp/size_mesh_", i, "_.pdf")), width = 14, height = 14, units = "cm")

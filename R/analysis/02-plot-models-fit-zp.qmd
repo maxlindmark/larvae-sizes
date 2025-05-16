@@ -115,7 +115,7 @@ pars_order <- pars |>
 
 labels <- data.frame(
   life_stage = rep(c("Larvae", "All life stages"), each = 3),
-  term = rep(c("Temperature", "Chlorophyll", "Day of the year"), 2),
+  term = rep(c("Temperature", "Chlorophyll-a", "Day of the year"), 2),
   group = c("(a)", "(c)", "(e)", "(b)", "(d)", "(f)")
   )
 
@@ -129,7 +129,7 @@ pars_dat <- pars |>
   mutate(term = fct_recode(term,
     "Day of the year" = "yday_ct",
     "Temperature" = "temp_sc",
-    "Chlorophyll" = "chl_sc"
+    "Chlorophyll-a" = "chl_sc"
   )) |>
   mutate(
     sign = ifelse(estimate > 0, "pos", "neg"),
@@ -160,7 +160,7 @@ pars_dat |>
 
 # Plot!
 ggplot(pars_dat, aes(estimate, factor(species2, levels = pars_order$species2), fill = sig, color = sign, shape = sig)) +
-  ggh4x::facet_grid2(factor(life_stage, levels = c("Larvae", "All life stages")) ~ factor(term, levels = c("Temperature", "Chlorophyll", "Day of the year")),
+  ggh4x::facet_grid2(factor(life_stage, levels = c("Larvae", "All life stages")) ~ factor(term, levels = c("Temperature", "Chlorophyll-a", "Day of the year")),
                      scales = "free_y") +
   geom_point(fill = NA) +
   scale_shape_manual(values = c(21, 19)) +
