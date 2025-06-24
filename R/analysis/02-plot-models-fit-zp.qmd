@@ -749,6 +749,19 @@ cop_kat |>
   geom_line() +
   geom_smooth()
 
+# Annual mean
+cop_kat |>
+  summarise(mean = mean(cop), .by = c(year, month)) |>
+  filter(month < 4) |> 
+  arrange(desc(mean))
+
+cop_kat |>
+  summarise(mean = mean(cop), .by = c(year, month)) |> 
+  ggplot(aes(year, mean)) +
+  geom_bar(stat = "identity") + 
+  stat_smooth() +
+  facet_wrap(~month, ncol = 1)
+
 # Proportion 0 by year
 cop_ska |>
   mutate(is_zero = factor(ifelse(finmarch == 0, "Zero", "Non-zero"))) |>
@@ -767,6 +780,17 @@ cop_kat |>
   ggplot(aes(x = year, y = proportion, fill = is_zero)) +
   geom_col() +
   facet_wrap(~ station, ncol = 1)
+
+cop_kat |>
+  filter(month == 1) |> 
+  mutate(is_zero = factor(ifelse(finmarch == 0, "Zero", "Non-zero"))) |>
+  count(year, station, is_zero) |>
+  group_by(year, station) |>
+  mutate(proportion = n / sum(n)) |>
+  ggplot(aes(x = year, y = proportion, fill = is_zero)) +
+  geom_col() +
+  facet_wrap(~ station, ncol = 1)
+
 
 # Fit models
 # Calanus models: tweedie
@@ -983,6 +1007,7 @@ Plot all together
 ```{r}
 # Final plots... 
 coeff <- 3
+
 p1 <- preds |>
   mutate(month_r = round(month)) |> 
   filter(month_r == 1 & type == "finmarch") |> 
@@ -1006,7 +1031,7 @@ p1 <- preds |>
   #labs(x = "Year", y = "*C. finmarchicus* (no m<sup>-3</sup>)") +
   guides(fill = "none", color = "none") + 
   scale_y_continuous(
-    name = "*C. finmarchicus* density<br>(mg m<sup>-3</sup>)",
+    name = "*Calanus* spp. density<br>(mg m<sup>-3</sup>)",
     sec.axis = sec_axis(~.*coeff, name = "")) +
   theme(legend.title = element_blank(),
         legend.position.inside = c(0.8, 0.8),
@@ -1054,6 +1079,8 @@ p2 <- preds |>
         axis.text.y.right = element_text(color = pal[2])) +
   coord_cartesian(expand = 0, xlim = c(1993, 2024)) +
   theme(axis.text.x = element_text(angle = 90))
+
+p2
 
 # Plot global and random smoohts
 p_trends <- nd |>

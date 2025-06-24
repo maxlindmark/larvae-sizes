@@ -262,7 +262,7 @@ p_chlCovMap <- covMapTheme +
   geom_sf() + 
   annotate("text", label = "(b)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
            color = "gray40", size = 4) +
-  scale_fill_viridis(name = expression("Chl (kg m"^-3 * ")")) +
+  scale_fill_viridis(name = expression("Chl (mg m"^-3 * ")")) +
   theme(
     axis.text.y = element_blank(),
     axis.title.y = element_blank()) +
@@ -302,7 +302,7 @@ ct <- trends |>
   ggplot(aes(year, value)) +
   geom_point(color = "grey30") +
   geom_smooth(method = "gam", formula = y~s(x, k=8), color = "tomato") +
-  labs(x = "Year", y = expression("Chl (kg m"^-3 * ")")) +
+  labs(x = "Year", y = expression("Chl (mg m"^-3 * ")")) +
   annotate("text", label = "(d)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
            color = "gray40", size = 4)
 
