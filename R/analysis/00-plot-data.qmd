@@ -97,7 +97,9 @@ rect <- st_read("/Users/maxlindmark/Dropbox/Max work/R/pred-prey-overlap/data/sh
 Plot covariates
 
 ```{r}
-pal <- brewer.pal(n = 8, name = "Dark2")[c(8, 2)]
+#pal <- brewer.pal(n = 8, name = "Dark2")[c(8, 2)]
+pal <- brewer.pal(n = 9, name = "Set1")[c(9, 7)]
+pal[1] <- "#5B5B5B"
 coul <- brewer.pal(11, "Spectral")
 coul <- colorRampPalette(coul)(length(unique(d$species)))
 
@@ -262,7 +264,7 @@ p_chlCovMap <- covMapTheme +
   geom_sf() + 
   annotate("text", label = "(b)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
            color = "gray40", size = 4) +
-  scale_fill_viridis(name = expression("Chl (mg m"^-3 * ")")) +
+  scale_fill_viridis(name = expression("Chl (mg m"^-3 * ")"), n.breaks = 4) +
   theme(
     axis.text.y = element_blank(),
     axis.title.y = element_blank()) +

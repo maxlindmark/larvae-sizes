@@ -73,8 +73,11 @@ sp_area <- tibble(
       "Syngnathus rostellatus")),
     "Skagerrak", "Kattegat"))
 
-pal <- brewer.pal(n = 8, name = "Dark2")[c(8, 2)]
-pal2 <- brewer.pal(n = 8, name = "Dark2")[c(3, 1)]
+#pal <- brewer.pal(n = 8, name = "Dark2")[c(8, 2)]
+pal <- brewer.pal(n = 9, name = "Set1")[c(9, 7)]
+pal[1] <- "#5B5B5B"
+#pal2 <- brewer.pal(n = 8, name = "Dark2")[c(3, 1)]
+pal2 <- brewer.pal(n = 8, name = "Set1")[1:2]
 
 skag_kat_border <- data.frame(lat1 = 57.75420, 
                               lat2 = 57.91694673025835,
@@ -696,7 +699,7 @@ p_percent
 
 # Fit models to Calanus time series
 
-Large plankton index and C. fimarchicus index
+Large plankton index and Calanus spp. index
 
 ```{r}
 # Read data
@@ -817,16 +820,20 @@ m_kat_cop <- gam(log(cop) ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10))
 # Plot models; https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/qq.gam.html
 # qq_m_ska <- as.ggplot(~simulateResiduals(m_kat, plot = T))
 
-p1 <- gg_dharma(simulateResiduals(m_ska, plot = FALSE)) + facet_wrap(~"C. finmarchicus-Skag", strip.position = "right") & 
+p1 <- gg_dharma(simulateResiduals(m_ska, plot = FALSE)) + 
+  facet_wrap(~ "italic('Calanus')~spp.-Skag", labeller = label_parsed, strip.position = "right") &  
   theme(axis.title.x = element_blank())
 
-p2 <- gg_dharma(simulateResiduals(m_kat, plot = FALSE)) + facet_wrap(~"C. finmarchicus-Katt", strip.position = "right") & 
+p2 <- gg_dharma(simulateResiduals(m_kat, plot = FALSE)) +
+  facet_wrap(~ "italic('Calanus')~spp.-Katt", labeller = label_parsed, strip.position = "right") &  
   theme(axis.title.x = element_blank())
         
-p3 <- gg_dharma(simulateResiduals(m_ska_cop, plot = FALSE)) + facet_wrap(~"Copepods-Skag", strip.position = "right") & 
+p3 <- gg_dharma(simulateResiduals(m_ska_cop, plot = FALSE)) +
+  facet_wrap(~"Copepods-Skag", strip.position = "right") & 
   theme(axis.title.x = element_blank())
 
-p4 <- gg_dharma(simulateResiduals(m_kat_cop, plot = FALSE)) + facet_wrap(~"Copepods-Katt", strip.position = "right")
+p4 <- gg_dharma(simulateResiduals(m_kat_cop, plot = FALSE)) +
+  facet_wrap(~"Copepods-Katt", strip.position = "right")
 
 (p1 / p2 / p3 / p4) + plot_layout(guides = "collect", axes = "collect")
 ggsave(paste0(home, "/figures/supp/qq_resid.pdf"), width = 18, height = 20, units = "cm")
@@ -905,7 +912,7 @@ preds <- bind_rows(
 p <- ggplot() +
   facet_wrap(~area, scales = "free") +
   scale_fill_viridis(trans = "sqrt") +
-  labs(y = "Year", x = "Month") +
+  labs(y = "Month", x = "Year") +
   coord_cartesian(expand = 0) +
   theme(legend.position = "bottom",
         legend.title = element_blank(),
@@ -916,36 +923,33 @@ p <- ggplot() +
         legend.spacing = unit(0, "pt"))
 
 p1 <- p +
-  geom_raster(data = preds |> filter(area == "Skagerrak" & type == "finmarch"), aes(month, year, fill = mgm3), alpha = 0.95) +
+  geom_raster(data = preds |> filter(area == "Skagerrak" & type == "finmarch"), aes(year, month, fill = mgm3), alpha = 0.95) +
   geom_contour(data = preds |> filter(area == "Skagerrak" & type == "finmarch"),
-               aes(month, year, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = cop_ska, aes(month, year), color = "white",
+               aes(year, month, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
+  geom_jitter(data = cop_ska, aes(year, month), color = "white",
               width = 0.1, height = 0.1, alpha = 0.3, size = 0.1)
 
 p2 <- p +
-  geom_raster(data = preds |> filter(area == "Kattegat" & type == "finmarch"), aes(month, year, fill = mgm3), alpha = 0.95) +
+  geom_raster(data = preds |> filter(area == "Kattegat" & type == "finmarch"), aes(year, month, fill = mgm3), alpha = 0.95) +
   geom_contour(data = preds |> filter(area == "Kattegat" & type == "finmarch"),
-               aes(month, year, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = cop_kat, aes(month, year), color = "white",
+               aes(year, month, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
+  geom_jitter(data = cop_kat, aes(year, month), color = "white",
               width = 0.1, height = 0.1, alpha = 0.3, size = 0.1) +
-  scale_color_viridis() +
-  facet_grid("C. finmarchicus" ~ area) +
-  theme(strip.text.y.right = element_text(face = "italic"))
+  facet_grid("italic('Calanus')~spp." ~ area, labeller = labeller(.rows = label_parsed))
 
 p3 <- p +
-  geom_raster(data = preds |> filter(area == "Skagerrak" & type == "copepod"), aes(month, year, fill = mgm3), alpha = 0.95) +
+  geom_raster(data = preds |> filter(area == "Skagerrak" & type == "copepod"), aes(year, month, fill = mgm3), alpha = 0.95) +
   geom_contour(data = preds |> filter(area == "Skagerrak" & type == "copepod"),
-               aes(month, year, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = cop_ska, aes(month, year), color = "white",
+               aes(year, month, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
+  geom_jitter(data = cop_ska, aes(year, month), color = "white",
               width = 0.1, height = 0.1, alpha = 0.3, size = 0.1)
 
 p4 <- p +
-  geom_raster(data = preds |> filter(area == "Kattegat" & type == "copepod"), aes(month, year, fill = mgm3), alpha = 0.95) +
+  geom_raster(data = preds |> filter(area == "Kattegat" & type == "copepod"), aes(year, month, fill = mgm3), alpha = 0.95) +
   geom_contour(data = preds |> filter(area == "Kattegat" & type == "copepod"),
-               aes(month, year, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = cop_kat, aes(month, year), color = "white",
+               aes(year, month, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
+  geom_jitter(data = cop_kat, aes(year, month), color = "white",
               width = 0.1, height = 0.1, alpha = 0.3, size = 0.1) +
-  scale_color_viridis() +
   facet_grid("Large copepods" ~ area) + 
   labs(caption = expression(paste("Density (", "mg m"^-3, ")")))
 
@@ -963,7 +967,8 @@ zp_dat <- bind_rows(
   #summarise(density = mean(density), .by = c(area, year, type, stationf))
 
 preds |>
-  mutate(type  = ifelse(type == "finmarch", "*C. finmarchicus*", "Large copepods")) |> 
+  #mutate(type  = ifelse(type == "finmarch", "*C. finmarchicus*", "Large copepods")) |> 
+  mutate(type = ifelse(type == "finmarch", "*Calanus* spp.", "Large copepods")) |> 
   summarise(pred = median(pred),
             lwr = median(lwr),
             upr = median(upr),
@@ -975,7 +980,9 @@ preds |>
   ggh4x::facet_grid2(type~area, scales = "free", independent = "all") + 
   annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
            color = "gray40", size = 4) +
-  geom_jitter(data = zp_dat, aes(year, density), width = 0.1, height = 0, alpha = 0.35) +
+  geom_jitter(data = zp_dat |> 
+                mutate(type = ifelse(type == "*C. finmarchicus*", "*Calanus* spp.", "Large copepods")),
+              aes(year, density), width = 0.1, height = 0, alpha = 0.35) +
   geom_line(color = "tomato", linewidth = 1) +
   scale_y_continuous(trans = "sqrt") +
   geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.3, color = NA) +
@@ -1104,6 +1111,88 @@ pp_left <- (p1 / p2 / p_trends) + plot_layout(axes = "collect")
 (pp_left | p_percent ) + plot_layout(widths = c(1, 1))
 
 ggsave(paste0(home, "/figures/percent_change.pdf"), width = 20, height = 15, units = "cm")
+
+## Calculate correlations:
+cala <- preds |>
+  mutate(month_r = round(month),
+         year = round(year)) |> 
+  filter(month_r == 1 & type == "finmarch") |> 
+  summarise(est = mean(exp(pred)) / 1000,
+            lwr = mean(exp(lwr)) / 1000,
+            upr = mean(exp(upr)) / 1000,
+            .by = c(year, area)) |> 
+  dplyr::select(year, est, area) |> 
+  rename(calanus = est)
+
+cope <- preds |>
+  mutate(month_r = round(month),
+         year = round(year)) |> 
+  filter(month_r %in% c(1) & type == "copepod") |> 
+  summarise(est = mean(exp(pred)) / 1000,
+            lwr = mean(exp(lwr)) / 1000,
+            upr = mean(exp(upr)) / 1000,
+            .by = c(year, area)) |> 
+  dplyr::select(year, est, area) |> 
+  rename(copepods = est)
+
+global <- nd |> 
+  mutate(year = round(year)) |> 
+  summarise(global = mean(global), .by = c(year, area)) |> 
+  dplyr::select(year, global, area)
+  
+global <- global |> left_join(cope, by = c("year", "area"))
+global <- global |> left_join(cala, by = c("year", "area"))
+
+head(global)
+tail(global)
+
+head(global)
+tail(global)
+
+cor_ci <- function(x, y) {
+  ct <- cor.test(x, y, use = "complete.obs")
+  tibble(
+    r    = ct$estimate,
+    low  = ct$conf.int[1],
+    high = ct$conf.int[2],
+    n    = sum(!is.na(x) & !is.na(y))
+  )
+}
+
+global |>
+  group_by(area) |>
+  summarise(
+    copepods = list(cor_ci(global, copepods)),
+    calanus  = list(cor_ci(global, calanus)),
+    .groups  = "drop"
+  ) |>
+  pivot_longer(c(copepods, calanus), names_to = "variable", values_to = "stats") |>
+  unnest(stats)
+
+# Plot
+global |>
+  group_by(area) |>
+  summarise(
+    copepods = list(cor_ci(global, copepods)),
+    calanus  = list(cor_ci(global, calanus)),
+    .groups  = "drop"
+  ) |>
+  pivot_longer(c(copepods, calanus), names_to = "variable", values_to = "stats") |>
+  unnest(stats) |>
+  mutate(group = ifelse(variable == "copepods",
+                        "Large copepods",
+                        "*Calanus* spp.")) |> 
+  ggplot(aes(x = r, y = area, colour = area)) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50", linewidth = 0.4) +
+  geom_pointrange(aes(xmin = low, xmax = high), linewidth = 0.8, size = 0.6) +
+  facet_wrap(~group, ncol = 2) +
+  guides(colour = "none") +
+  scale_x_continuous(limits = c(-1, 1), breaks = seq(-1, 1, 0.5)) +
+  labs(x = "Pearson r (95% CI)", y = NULL) +
+  scale_color_manual(values = pal) +
+  theme(strip.text = ggtext::element_markdown())
+
+ggsave(paste0(home, "/figures/supp/global_corr.pdf"), width = 19, height = 8, units = "cm")
 ```
 
 ## C.O.G
@@ -1211,507 +1300,3 @@ genq |>
   ggplot(aes(estimate, species, color = term)) +
   geom_point()
 ```
-
-
-```{r}
-knitr::knit_exit()
-```
-
-```{r}
-#| message: false
-#| warning: false
-
-# cal_abu_skag <- readxl::read_excel(paste0(home, "/data/plankton/Calanus abundances Skagerrak Kattegatt.xlsx")) |>
-#   dplyr::select(date2, Skagerrak) |>
-#   rename(date = date2,
-#          density = Skagerrak) |>
-#   mutate(area = "Skagerrak") |>
-#   mutate(year = year(date),
-#          month = month(date),
-#          yday = yday(date),
-#          day = day(date),
-#          yearf = as.factor(year),
-#          year_ct = year - mid_year)
-# 
-# # Kattegatt
-# cal_abu_katt <- readxl::read_excel(paste0(home, "/data/plankton/Calanus abundances Skagerrak Kattegatt.xlsx")) |>
-#   dplyr::select(date1, Kattegatt) |>
-#   rename(date = date1,
-#          density = Kattegatt) |>
-#   mutate(area = "Kattegat") |>
-#   drop_na(density) |>
-#   mutate(year = year(date),
-#          month = month(date),
-#          yday = yday(date),
-#          day = day(date),
-#          yearf = as.factor(year),
-#          year_ct = year - mid_year)
-
-# m_skag <- gam(log(density) ~ s(year_ct) + s(yday, bs = "cc"),
-#               knots = list(yday = c(0.5, 364.5)),
-#               data = cal_abu_skag)
-# 
-# m_kat <- gam(log(density) ~ s(year_ct) + s(yday, bs = "cc"),
-#              knots = list(yday = c(0.5, 364.5)),
-#              data = cal_abu_katt)
-```
-
-```{r}
-zp_abu_skag <- readxl::read_excel(paste0(home, "/data/plankton/Copepod abundances larger than 250µm Skagerrak Kattegatt.xlsx")) |>
-  dplyr::select(`date Skagerrak`, `Skagerrak ind/m3`) |>
-  rename(date = `date Skagerrak`,
-         density = `Skagerrak ind/m3`) |>
-  mutate(area = "Skagerrak") |>
-  mutate(year = year(date),
-         month = month(date),
-         yday = yday(date),
-         day = day(date),
-         yearf = as.factor(year),
-         year_ct = year - mid_year)
-
-# Kattegatt
-zp_abu_katt <- readxl::read_excel(paste0(home, "/data/plankton/Copepod abundances larger than 250µm Skagerrak Kattegatt.xlsx")) |>
-  dplyr::select(`date Kattegatt`, `Kattegatt, ind/m3`) |>
-  rename(date = `date Kattegatt`,
-         density = `Kattegatt, ind/m3`) |>
-  mutate(area = "Kattegat") |>
-  mutate(year = year(date),
-         month = month(date),
-         yday = yday(date),
-         day = day(date),
-         yearf = as.factor(year),
-         year_ct = year - mid_year) |> 
-  drop_na(density)
-
-m_skag <- gam(log(density) ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
-              knots = list(month = c(0.5, seq(1, 12, length = 10), 12.5)),
-              data = zp_abu_skag)
-
-# Fit with gamm and REML, then do:
-#plot(acf(resid(m_skag$lme, type = "normalized")))
-
-m_kat <- gam(log(density) ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
-             knots = list(month =c(0.5, seq(1, 12, length = 10), 12.5)),
-             data = zp_abu_katt)
-
-plot.gam(m_ska)
-plot.gam(m_kat)
-
-# https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/qq.gam.html
-ps <- as.ggplot(~qq.gam(m_skag))
-pk <- as.ggplot(~qq.gam(m_kat))
-
-ps + pk
-
-#ggsave(paste0(home, "/figures/supp/zp_qq.pdf"), width = 18, height = 11, units = "cm")
-
-# Create newdat
-zp_nds <- zp_abu_skag |> 
-  data_grid(year = seq_range(year, n = 100),
-            month = seq_range(month, n = 100),
-            ) |>
-  mutate(year_ct = year - mid_year,
-         yearf = as.factor(round(year))) 
-
-zp_ndk <- zp_abu_katt |> 
-  data_grid(year = seq_range(year, n = 100),
-            month = seq_range(month, n = 100),
-            ) |>
-  mutate(year_ct = year - mid_year,
-         yearf = as.factor(round(year))) 
-
-# Predict
-zp_ps <- predict(m_skag, newdata = zp_nds, se.fit = TRUE)
-
-crit_s <- qt(0.75, df = df.residual(m_skag)) # ~95% interval critical t
-
-zp_nds <- zp_nds |>
-  mutate(pred = as.numeric(zp_ps$fit),
-         se = as.numeric(zp_ps$se),
-         lwr = pred - crit_s*se,
-         upr = pred + crit_s*se)
-
-zp_pk <- predict(m_kat, newdata = zp_ndk, se.fit = TRUE)
-
-crit_k <- qt(0.75, df = df.residual(m_kat)) # ~95% interval critical t
-
-zp_ndk <- zp_ndk |>
-  mutate(pred = as.numeric(zp_pk$fit),
-         se = as.numeric(zp_pk$se),
-         lwr = pred - crit_k*se,
-         upr = pred + crit_k*se)
-
-zp_pred <- bind_rows(zp_nds |> mutate(area = "Skagerrak"),
-                     zp_ndk |> mutate(area = "Kattegat"))
-
-p <- ggplot() +
-  facet_wrap(~area, scales = "free") +
-  scale_fill_viridis(trans = "sqrt") +
-  labs(y = "Year", x = "Month", fill = expression(italic("C. finmarchicus")~"(no"~m^{-3}~")")) +
-  coord_cartesian(expand = 0) +
-  theme(legend.position = "bottom",
-        legend.key.width = unit(1, "cm"),
-        legend.key.height = unit(0.2, "cm"))
-
-p1 <- p +
-  geom_raster(data = zp_pred |> filter(area == "Skagerrak"), aes(month, year, fill = exp(pred)), alpha = 0.95) +
-  geom_contour(data = zp_pred |> filter(area == "Skagerrak"),
-               aes(month, year, z = exp(pred)), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = zp_abu_skag, aes(month, year), color = "white",
-              width = 0.1, height = 0.1, alpha = 0.3, size = 0.1) +
-  guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
-  
-p2 <- p +
-  geom_raster(data = zp_pred |> filter(area == "Kattegat"), aes(month, year, fill = exp(pred)), alpha = 0.95) +
-  geom_contour(data = zp_pred |> filter(area == "Kattegat"),
-               aes(month, year, z = exp(pred)), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = zp_abu_katt, aes(month, year), color = "white",
-              width = 0.1, height = 0.1, alpha = 0.3, size = 0.1) +
-  guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5, title.theme = element_text(color = "white"))) +
-  scale_color_viridis()
-
-(p1 | p2) + plot_layout(axes = "collect")
-
-#ggsave(paste0(home, "/figures/supp/zp_heat.pdf"), width = 19, height = 12, units = "cm")
-
-# Predicted vs data
-zp_dat <- bind_rows(zp_abu_skag, zp_abu_katt) |> 
-  summarise(density = mean(density), .by = c(area, year))
-
-zp_dat |> as.data.frame()
-
-zp_pred |>
-  summarise(pred = median(pred),
-            lwr = median(lwr),
-            upr = median(upr),
-            .by = c(year, area)) |> 
-  mutate(est = exp(pred),
-         lwr = exp(lwr),
-         upr = exp(upr)) |> 
-  ggplot(aes(year, est)) +
-  facet_wrap(~area, ncol = 1, scales = "free") + 
-  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  geom_point(data = zp_dat, aes(year, density)) +
-  geom_line() +
-  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.3, color = NA) +
-  scale_color_manual(values = pal) +
-  scale_fill_manual(values = pal) +
-  labs(x = "Year", y = "*C. finmarchicus* (no m<sup>-3</sup>)") +
-  guides(fill = "none") + 
-  theme(legend.title = element_blank(),
-        legend.position.inside = c(0.8, 0.8),
-        axis.title.y = element_markdown(),
-        plot.subtitle = element_markdown(),
-        axis.line.y.right = element_line(color = pal[2]),
-        axis.ticks.y.right = element_line(color = pal[2]),
-        axis.text.y.right = element_text(color = pal[2])) +
-  xlim(c(1993, 2024)) 
-
-#ggsave(paste0(home, "/figures/supp/zp_pred_obs_median.pdf"), width = 18, height = 17, units = "cm")
-```
-
-```{r}
-cal_abu_skag <- read_csv(paste0(home, "/data/plankton/zero_populated_Cfin_abundances.csv")) |> 
-  dplyr::select(Skagerrak_date, Skagerrak_abundance) |> 
-  rename(date = Skagerrak_date,
-         density = Skagerrak_abundance) |> 
-  mutate(area = "Skagerrak") |> 
-  mutate(year = year(date),
-         month = month(date),
-         yday = yday(date),
-         day = day(date),
-         yearf = as.factor(year),
-         year_ct = year - mid_year)
-
-cal_abu_katt <- read_csv(paste0(home, "/data/plankton/zero_populated_Cfin_abundances.csv")) |> 
-  dplyr::select(Kattegatt_date, Kattegatt_abundance) |> 
-  rename(date = Kattegatt_date,
-         density = Kattegatt_abundance) |> 
-  mutate(area = "Kattegat") |> 
-  mutate(year = year(date),
-         month = month(date),
-         yday = yday(date),
-         day = day(date),
-         yearf = as.factor(year),
-         year_ct = year - mid_year)
-
-
-# https://stackoverflow.com/questions/46797884/can-i-estimate-a-time-varying-seasonal-effect-in-r-with-gamm
-# https://fromthebottomoftheheap.net/2015/11/21/climate-change-and-spline-interactions/
-# https://fromthebottomoftheheap.net/2015/11/23/are-some-seasons-warming-more-than-others/
-
-m_skag <- gam(density ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
-              family = tw,
-              knots = list(month = c(0.5, seq(1, 12, length = 10), 12.5)),
-              data = cal_abu_skag)
-
-# Fit with gamm and REML, then do:
-#plot(acf(resid(m_skag$lme, type = "normalized")))
-
-m_kat <- gam(density ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
-             family = tw,
-             knots = list(month =c(0.5, seq(1, 12, length = 10), 12.5)),
-             data = cal_abu_katt)
-
-#plot(acf(resid(m_kat$lme, type = "normalized")))
-
-# https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/qq.gam.html
-ps <- as.ggplot(~qq.gam(m_skag))
-pk <- as.ggplot(~qq.gam(m_kat))
-
-ps + pk
-
-ggsave(paste0(home, "/figures/supp/cal_qq.pdf"), width = 18, height = 11, units = "cm")
-
-# Create newdat
-cal_nds <- cal_abu_skag |> 
-  data_grid(year = seq_range(year, n = 100),
-            #yday = 1:365
-            month = seq_range(month, n = 100),
-            ) |>
-  mutate(year_ct = year - mid_year,
-         yearf = as.factor(round(year))) 
-
-cal_ndk <- cal_abu_katt |> 
-  data_grid(year = seq_range(year, n = 100),
-            #yday = 1:365
-            month = seq_range(month, n = 100),
-            ) |>
-  mutate(year_ct = year - mid_year,
-         yearf = as.factor(round(year))) 
-
-# Predict
-cal_ps <- predict(m_skag, newdata = cal_nds, se.fit = TRUE)
-
-crit_s <- qt(0.75, df = df.residual(m_skag)) # ~95% interval critical t
-
-# 1.28 is the 80% CI
-# 0.674 is the 50% CI
-cal_nds <- cal_nds |>
-  mutate(pred = as.numeric(cal_ps$fit),
-         se = as.numeric(cal_ps$se),
-         lwr = pred - crit_s*se,
-         upr = pred + crit_s*se)
-
-cal_pk <- predict(m_kat, newdata = cal_ndk, se.fit = TRUE)
-
-crit_k <- qt(0.75, df = df.residual(m_kat)) # ~95% interval critical t
-
-cal_ndk <- cal_ndk |>
-  mutate(pred = as.numeric(cal_pk$fit),
-         se = as.numeric(cal_pk$se),
-         lwr = pred - crit_k*se,
-         upr = pred + crit_k*se)
-
-cal_pred <- bind_rows(cal_nds |> mutate(area = "Skagerrak"),
-                      cal_ndk |> mutate(area = "Kattegat"))
-
-# p <- ggplot() + 
-#   facet_wrap(~area, scales = "free") + 
-#   scale_fill_viridis(discrete = TRUE) +
-#   labs(y = "Year", x = "Month", fill = "*C. finmarchicus* (no m<sup>-3</sup>)") + 
-#   coord_cartesian(expand = 0) +
-#   theme(legend.position = "bottom")
-# 
-# p2 <- p +
-#   geom_contour_filled(data = cal_pred |> filter(area == "Kattegat"),
-#                       aes(month, year, z = exp(pred)), alpha = 0.95, bins = 8) + 
-#   geom_jitter(data = cal_abu_katt, aes(month, year), color = "white",
-#               width = 0.1, height = 0.1, alpha = 0.3, size = 0.5) +
-#   guides(fill = guide_legend(title.position = "top", title.hjust = 0.5, nrow = 3,
-#                              title = ""))
-
-p <- ggplot() +
-  facet_wrap(~area, scales = "free") +
-  scale_fill_viridis() +
-  labs(y = "Year", x = "Month", fill = expression(italic("C. finmarchicus")~"(no"~m^{-3}~")")) +
-  coord_cartesian(expand = 0) +
-  theme(legend.position = "bottom",
-        legend.key.width = unit(1, "cm"),
-        legend.key.height = unit(0.2, "cm"))
-
-p1 <- p +
-  geom_raster(data = cal_pred |> filter(area == "Skagerrak"), aes(month, year, fill = exp(pred)), alpha = 0.95) +
-  geom_contour(data = cal_pred |> filter(area == "Skagerrak"),
-               aes(month, year, z = exp(pred)), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = cal_abu_skag, aes(month, year), color = "white",
-              width = 0.1, height = 0.1, alpha = 0.3, size = 0.1) +
-  guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
-  
-p2 <- p +
-  geom_raster(data = cal_pred |> filter(area == "Kattegat"), aes(month, year, fill = exp(pred)), alpha = 0.95) +
-  geom_contour(data = cal_pred |> filter(area == "Kattegat"),
-               aes(month, year, z = exp(pred)), alpha = 0.3, bins = 10, color = "white") +
-  geom_jitter(data = cal_abu_katt, aes(month, year), color = "white",
-              width = 0.1, height = 0.1, alpha = 0.3, size = 0.1) +
-  guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5, title.theme = element_text(color = "white"))) +
-  scale_color_viridis()
-
-(p1 | p2) + plot_layout(axes = "collect")
-
-ggsave(paste0(home, "/figures/calanus_heat.pdf"), width = 19, height = 12, units = "cm")
-
-# What about phenology? No clear directional shift...
-cal_pred |> 
-  filter(month < 6) |> 
-  #mutate(year_r = round(year)) |> 
-  summarise(mean = mean(exp(pred)), .by = c(area, month, year)) |> 
-  group_by(year, area) |> 
-  filter(mean == max(mean)) |> 
-  ungroup() |> 
-  ggplot(aes(year, month)) +
-  facet_wrap(~area, scales = "free", ncol = 1) +
-  scale_color_viridis() + 
-  geom_line()
-
-# Predicted vs data
-cal_dat <- bind_rows(cal_abu_skag, cal_abu_katt) |> 
-  summarise(density = mean(density), .by = c(area, year))
-
-cal_dat |> as.data.frame()
-
-cal_pred |>
-  summarise(pred = median(pred),
-            lwr = median(lwr),
-            upr = median(upr),
-            .by = c(year, area)) |> 
-  mutate(est = exp(pred),
-         lwr = exp(lwr),
-         upr = exp(upr)) |> 
-  ggplot(aes(year, est)) +
-  facet_wrap(~area, ncol = 1, scales = "free") + 
-  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  geom_point(data = cal_dat, aes(year, density)) +
-  geom_line() +
-  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.3, color = NA) +
-  scale_color_manual(values = pal) +
-  scale_fill_manual(values = pal) +
-  labs(x = "Year", y = "*C. finmarchicus* (no m<sup>-3</sup>)") +
-  guides(fill = "none") + 
-  theme(legend.title = element_blank(),
-        legend.position.inside = c(0.8, 0.8),
-        axis.title.y = element_markdown(),
-        plot.subtitle = element_markdown(),
-        axis.line.y.right = element_line(color = pal[2]),
-        axis.ticks.y.right = element_line(color = pal[2]),
-        axis.text.y.right = element_text(color = pal[2])) +
-  xlim(c(1993, 2024)) 
-
-ggsave(paste0(home, "/figures/supp/cal_pred_obs_median.pdf"), width = 18, height = 17, units = "cm")
-```
-
-```{r}
-#| message: false
-#| warning: false
-
-#coeff <- 2
-
-pcal <- cal_pred |>
-  #filter(yday == 31) |>
-  filter(month == 2) |> 
-  mutate(est = exp(pred),
-         lwr = exp(lwr),
-         upr = exp(upr)) |> 
-  # mutate(est = ifelse(area == "Skagerrak", est / coeff, est),
-  #        lwr = ifelse(area == "Skagerrak", lwr / coeff, lwr),
-  #        upr = ifelse(area == "Skagerrak", upr / coeff, upr)) |>
-  ggplot(aes(year, est, color = area)) +
-  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  guides(fill = guide_legend(position = "inside"),
-         color = guide_legend(position = "inside")) +
-  geom_line() +
-  geom_ribbon(aes(ymin = lwr, ymax = upr, fill = area), alpha = 0.3, color = NA) +
-  scale_color_manual(values = pal) +
-  scale_fill_manual(values = pal) +
-  #labs(x = "Year") +
-  labs(x = "Year", y = "*C. finmarchicus* (no m<sup>-3</sup>)") +
-  guides(fill = "none", color = "none") + 
-  # scale_y_continuous(
-  #   name = "*C. finmarchicus* (no m<sup>-3</sup>)",
-  #   sec.axis = sec_axis(~.*coeff, name = "")) +
-  theme(legend.title = element_blank(),
-        legend.position.inside = c(0.8, 0.8),
-        axis.title.y = element_markdown(),
-        plot.subtitle = element_markdown(),
-        axis.line.y.right = element_line(color = pal[2]),
-        axis.ticks.y.right = element_line(color = pal[2]),
-        axis.text.y.right = element_text(color = pal[2])) +
-  coord_cartesian(expand = 0) +
-  xlim(c(1993, 2024))
-
-pcal
-
-#coeff <- 2
-
-pzp <- zp_pred |>
-  #filter(yday == 31) |>
-  filter(month == 2) |> 
-  mutate(est = exp(pred),
-         lwr = exp(lwr),
-         upr = exp(upr)) |> 
-  # mutate(est = ifelse(area == "Skagerrak", est / coeff, est),
-  #        lwr = ifelse(area == "Skagerrak", lwr / coeff, lwr),
-  #        upr = ifelse(area == "Skagerrak", upr / coeff, upr)) |>
-  ggplot(aes(year, est, color = area)) +
-  annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  guides(fill = guide_legend(position = "inside"),
-         color = guide_legend(position = "inside")) +
-  geom_line() +
-  #geom_ribbon(aes(ymin = lwr, ymax = upr, fill = area), alpha = 0.3, color = NA) +
-  scale_color_manual(values = pal) +
-  scale_fill_manual(values = pal) +
-  #labs(x = "Year") +
-  labs(x = "Year", y = "zp > 0.25 mm (no m<sup>-3</sup>)") +
-  guides(fill = "none", color = "none") + 
-  # scale_y_continuous(
-  #   name = "*C. finmarchicus* (no m<sup>-3</sup>)",
-  #   sec.axis = sec_axis(~.*coeff, name = "")) +
-  theme_sleek(base_size = 20) +
-  theme(legend.title = element_blank(),
-        legend.position.inside = c(0.8, 0.8),
-        axis.title.y = element_markdown(),
-        plot.subtitle = element_markdown(),
-        axis.line.y.right = element_line(color = pal[2]),
-        axis.ticks.y.right = element_line(color = pal[2]),
-        axis.text.y.right = element_text(color = pal[2])) +
-  xlim(c(1993, 2024))
-
-pzp
-
-cal_pred |> 
-  #filter(yday == 31) |> 
-  filter(month == 1 & year >= 2010) |>
-  summarise(mean = mean(exp(pred)), .by = c(year, area)) |> 
-  group_by(area) |> 
-  filter(year %in% c(min(year), max(year))) |> 
-  mutate(year = ifelse(year == min(year), "start", "end")) |> 
-  pivot_wider(names_from = year, values_from = mean) |> 
-  mutate(percent_change = ((end-start)/abs(start))*100)
-
-# Plot global and random smoohts
-p_trends <- nd |>
-  ggplot(aes(year, global, color = area, fill = area)) +
-  geom_ribbon(aes(ymin = global_lwr, ymax = global_upr), alpha = 0.2, color = NA) +
-  geom_line() +
-  annotate("text", label = "(b)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
-           color = "gray40", size = 4) +
-  theme(strip.text = element_text(face = "italic", size = 7.3)) +
-  scale_color_manual(values = pal) +
-  scale_fill_manual(values = pal) +
-  guides(fill = "none", 
-         color = guide_legend(position = "inside")) + 
-  theme(legend.title = element_blank(),
-        legend.position.inside = c(0.83, 0.87)) +
-  labs(x = "Year", y = "Global effect on z-scored length")
-
-pp_left <- (pcal / p_trends) + plot_layout(axes = "collect")
-
-(pp_left | p_percent ) + plot_layout(widths = c(1, 1))
-
-ggsave(paste0(home, "/figures/percent_change.pdf"), width = 19, height = 12, units = "cm")
-```
-
