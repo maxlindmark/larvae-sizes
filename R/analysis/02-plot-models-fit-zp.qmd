@@ -709,6 +709,8 @@ cop_kat <- read_csv(paste0(home, "/data/plankton/Copepod_biomass_Kattegatt.csv")
                 ~as.numeric(gsub(" ", "", .)))) |> 
   mutate(cop = sum_of_abif_biomass + sum_of_acla_biomass + sum_of_cfin_biomass + sum_of_centro_biomass + sum_of_para_biomass + sum_of_pseudo_biomass + sum_of_temora_biomass) |> 
   rename(finmarch = sum_of_cfin_biomass) |> 
+  mutate(finmarch = finmarch/1000,
+         cop = cop/1000) |> 
   dplyr::select(date, station, finmarch, cop) |> 
   mutate(area = "Kattegat",
          year = year(date),
@@ -725,6 +727,8 @@ cop_ska <- read_csv(paste0(home, "/data/plankton/Copepod_biomass_Skagerrak.csv")
                 ~as.numeric(gsub(" ", "", .)))) |> 
   mutate(cop = sum_of_abif_biomass + sum_of_acla_biomass + sum_of_cfin_biomass + sum_of_centro_biomass + sum_of_para_biomass + sum_of_pseudo_biomass + sum_of_temora_biomass) |> 
   rename(finmarch = sum_of_cfin_biomass) |> 
+  mutate(finmarch = finmarch/1000,
+         cop = cop/1000) |> 
   dplyr::select(date, station, finmarch, cop) |> 
   mutate(station = ifelse(station == "BROA E", "BROA", station),
          area = "Skagerrak",
@@ -795,8 +799,8 @@ cop_kat |>
   facet_wrap(~ station, ncol = 1)
 
 
-# Fit models
-# Calanus models: tweedie
+# Fit tweedie models
+# Calanus models
 m_ska <- gam(finmarch ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
              family = tw,
              knots = list(month = c(0.5, seq(1, 12, length = 10), 12.5)),
@@ -807,13 +811,15 @@ m_kat <- gam(finmarch ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
              knots = list(month = c(0.5, seq(1, 12, length = 10), 12.5)),
              data = cop_kat)
 
-# Large copepod models: log response and gaussian
+# Large copepod models
 #hist(log(cop_ska$cop))
-m_ska_cop <- gam(log(cop) ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
+m_ska_cop <- gam(cop ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
+                 family = tw,
                  knots = list(month = c(0.5, seq(1, 12, length = 10), 12.5)),
                  data = cop_ska)
 
-m_kat_cop <- gam(log(cop) ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
+m_kat_cop <- gam(cop ~ te(month, year_ct, bs = c("cc","tp"), k = c(12, 10)),
+                 family = tw,
                  knots = list(month = c(0.5, seq(1, 12, length = 10), 12.5)),
                  data = cop_kat)
 
@@ -907,7 +913,7 @@ preds <- bind_rows(
   ) |> 
   # Average across stations
   mutate(exp_pred = exp(pred),
-         mgm3 = exp_pred / 1000)
+         mgm3 = exp_pred)
   
 p <- ggplot() +
   facet_wrap(~area, scales = "free") +
@@ -950,8 +956,8 @@ p4 <- p +
                aes(year, month, z = mgm3), alpha = 0.3, bins = 10, color = "white") +
   geom_jitter(data = cop_kat, aes(year, month), color = "white",
               width = 0.1, height = 0.1, alpha = 0.3, size = 0.1) +
-  facet_grid("Large copepods" ~ area) + 
-  labs(caption = expression(paste("Density (", "mg m"^-3, ")")))
+  facet_grid("Other calanoid copepods" ~ area) + 
+  labs(caption = expression(paste("Biomass density (", "mg m"^-3, ")")))
 
 (p1 + p2 + p3 + p4) + plot_layout(axes = "collect")
 
@@ -962,13 +968,13 @@ zp_dat <- bind_rows(
   cop_kat,
   cop_ska) |> 
   rename(`*C. finmarchicus*` = finmarch,
-         `Large copepods` = cop) |> 
-  pivot_longer(c(`*C. finmarchicus*`, `Large copepods`), names_to = "type", values_to = "density") #|> 
+         `Other calanoid copepods` = cop) |> 
+  pivot_longer(c(`*C. finmarchicus*`, `Other calanoid copepods`), names_to = "type", values_to = "density") #|> 
   #summarise(density = mean(density), .by = c(area, year, type, stationf))
 
 preds |>
-  #mutate(type  = ifelse(type == "finmarch", "*C. finmarchicus*", "Large copepods")) |> 
-  mutate(type = ifelse(type == "finmarch", "*Calanus* spp.", "Large copepods")) |> 
+  #mutate(type  = ifelse(type == "finmarch", "*C. finmarchicus*", "Other calanoid copepods")) |> 
+  mutate(type = ifelse(type == "finmarch", "*Calanus* spp.", "Other calanoid copepods")) |> 
   summarise(pred = median(pred),
             lwr = median(lwr),
             upr = median(upr),
@@ -981,7 +987,7 @@ preds |>
   annotate("text", label = "(a)", x = -Inf, y = Inf, vjust = 1.5, hjust = -0.2,
            color = "gray40", size = 4) +
   geom_jitter(data = zp_dat |> 
-                mutate(type = ifelse(type == "*C. finmarchicus*", "*Calanus* spp.", "Large copepods")),
+                mutate(type = ifelse(type == "*C. finmarchicus*", "*Calanus* spp.", "Other calanoid copepods")),
               aes(year, density), width = 0.1, height = 0, alpha = 0.35) +
   geom_line(color = "tomato", linewidth = 1) +
   scale_y_continuous(trans = "sqrt") +
@@ -993,7 +999,7 @@ preds |>
         axis.line.y.right = element_line(color = pal[2]),
         axis.ticks.y.right = element_line(color = pal[2]),
         axis.text.y.right = element_text(color = pal[2])) + 
-  labs(y = expression(paste("Density (", "mg m"^-3, ")")),
+  labs(y = expression(paste("Biomass density (", "mg m"^-3, ")")),
        x = "Year")
 
 ggsave(paste0(home, "/figures/supp/pred_vs_data_plankton.pdf"), width = 19, height = 16, units = "cm")
@@ -1018,9 +1024,9 @@ coeff <- 3
 p1 <- preds |>
   mutate(month_r = round(month)) |> 
   filter(month_r == 1 & type == "finmarch") |> 
-  summarise(est = mean(exp(pred)) / 1000,
-            lwr = mean(exp(lwr)) / 1000,
-            upr = mean(exp(upr)) / 1000,
+  summarise(est = mean(exp(pred)),
+            lwr = mean(exp(lwr)),
+            upr = mean(exp(upr)),
             .by = c(year, area)) |> 
   mutate(est = ifelse(area == "Skagerrak", est / coeff, est),
          lwr = ifelse(area == "Skagerrak", lwr / coeff, lwr),
@@ -1038,7 +1044,7 @@ p1 <- preds |>
   #labs(x = "Year", y = "*C. finmarchicus* (no m<sup>-3</sup>)") +
   guides(fill = "none", color = "none") + 
   scale_y_continuous(
-    name = "*Calanus* spp. density<br>(mg m<sup>-3</sup>)",
+    name = "*Calanus* spp. <br>(mg m<sup>-3</sup>)",
     sec.axis = sec_axis(~.*coeff, name = "")) +
   theme(legend.title = element_blank(),
         legend.position.inside = c(0.8, 0.8),
@@ -1055,9 +1061,9 @@ coeff <- 0.5
 p2 <- preds |>
   mutate(month_r = round(month)) |> 
   filter(month_r %in% c(1) & type == "copepod") |> 
-  summarise(est = mean(exp(pred)) / 1000,
-            lwr = mean(exp(lwr)) / 1000,
-            upr = mean(exp(upr)) / 1000,
+  summarise(est = mean(exp(pred)),
+            lwr = mean(exp(lwr)),
+            upr = mean(exp(upr)),
             .by = c(year, area)) |> 
   mutate(est = ifelse(area == "Skagerrak", est / coeff, est),
          lwr = ifelse(area == "Skagerrak", lwr / coeff, lwr),
@@ -1072,10 +1078,9 @@ p2 <- preds |>
   scale_color_manual(values = pal) +
   scale_fill_manual(values = pal) +
   labs(x = "Year") +
-  #labs(x = "Year", y = "*Large copepod density (mg m<sup>-3</sup>)") +
   guides(fill = "none", color = "none") + 
   scale_y_continuous(
-    name = "Large copepod density<br>(mg m<sup>-3</sup>)",
+    name = "Other calanoid copepods<br>(mg m<sup>-3</sup>)",
     sec.axis = sec_axis(~.*coeff, name = "")) +
   theme(legend.title = element_blank(),
         legend.position.inside = c(0.8, 0.8),
@@ -1117,9 +1122,9 @@ cala <- preds |>
   mutate(month_r = round(month),
          year = round(year)) |> 
   filter(month_r == 1 & type == "finmarch") |> 
-  summarise(est = mean(exp(pred)) / 1000,
-            lwr = mean(exp(lwr)) / 1000,
-            upr = mean(exp(upr)) / 1000,
+  summarise(est = mean(exp(pred)),
+            lwr = mean(exp(lwr)),
+            upr = mean(exp(upr)),
             .by = c(year, area)) |> 
   dplyr::select(year, est, area) |> 
   rename(calanus = est)
@@ -1180,7 +1185,7 @@ global |>
   pivot_longer(c(copepods, calanus), names_to = "variable", values_to = "stats") |>
   unnest(stats) |>
   mutate(group = ifelse(variable == "copepods",
-                        "Large copepods",
+                        "Other calanoid copepods",
                         "*Calanus* spp.")) |> 
   ggplot(aes(x = r, y = area, colour = area)) +
   geom_vline(xintercept = 0, linetype = "dashed", colour = "grey50", linewidth = 0.4) +
