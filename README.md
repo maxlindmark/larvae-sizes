@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/778183546.svg)](https://doi.org/10.5281/zenodo.20658531)
+
 # Effects of temperature on fish larvae sizes
 This repo contains data and R code for cleaning and fitting geostatistical GLMMs with [sdmTMB](https://github.com/pbs-assess/sdmTMB), to assess temporal trends and effects of covariates on larvae sizes in Skagerrak and Kattegatt.
 
